@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebCodecs MP4 → Canvas</title>
+  <style>
+    body { margin: 0; background: #111; color: #ccc; font: 14px/1.4 system-ui, sans-serif; }
+    .bar { padding: 12px 16px; background: #1a1a1a; border-bottom: 1px solid #333; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    input[type="file"] { color: #ccc; }
+    #status { opacity: 0.75; font-size: 13px; }
+    canvas { display: block; margin: 16px auto; background: #222; max-width: calc(100vw - 32px); height: auto; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+</head>
+<body>
+  <div class="bar">
+    <label>上传 MP4（H.264 / avc1）：<input type="file" id="file" accept="video/mp4,.mp4"></label>
+    <span id="status">选择本地 MP4 文件开始硬解码播放</span>
+  </div>
+  <canvas id="canvas" width="640" height="360"></canvas>
+
+  <script>
+    const APP_VERSION = '1.1.0';
+    const MP4BOX_VERSION = '0.5.2';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const fileInput = document.getElementById('file');
+
+    // 按时间戳排队的待显示帧：{ frame, showAt }
+    const scheduledFrames = [];
+    let rafScheduled = false;
+    let playbackAnchor = null; // { ts, wall } 首帧对齐用
+    let decoder = null;
+    let loadToken = 0;
+    let framesDrawn = 0;
+
+    const log = {
+      info: (...args) => console.log('[WebCodecs Demo]', ...args),
+      warn: (...args) => console.warn('[WebCodecs Demo]', ...args),
+      error: (...args) => console.error('[WebCodecs Demo]', ...args),
+    };
+
+    async function printEnvInfo() {
+      const ua = navigator.userAgent;
+      const chrome = ua.match(/Chrome\/([\d.]+)/)?.[1];
+      const edge = ua.match(/Edg\/([\d.]+)/)?.[1];
+
+      log.info('─── 环境信息 ───');
+      log.info('Demo 版本:', APP_VERSION);
+      log.info('MP4Box 版本:', MP4BOX_VERSION);
+      log.info('浏览器:', edge ? `Edge ${edge}` : chrome ? `Chrome ${chrome}` : ua);
+      log.info('User-Agent:', ua);
+      log.info('Secure Context:', window.isSecureContext);
+      log.info('VideoDecoder:', typeof VideoDecoder !== 'undefined' ? '✓ 可用' : '✗ 不可用');
+      log.info('EncodedVideoChunk:', typeof EncodedVideoChunk !== 'undefined' ? '✓ 可用' : '✗ 不可用');
+      log.info('MP4Box:', typeof MP4Box !== 'undefined' ? '✓ 已加载' : '✗ 未加载');
+      log.info('DataStream:', typeof DataStream !== 'undefined' ? '✓ 已加载' : '✗ 未加载');
+
+      if (typeof VideoDecoder !== 'undefined') {
+        try {
+          const probe = await VideoDecoder.isConfigSupported({
+            codec: 'avc1.42E01E',
+            codedWidth: 640,
+            codedHeight: 360,
+          });
+          log.info('H.264 硬解支持 (avc1.42E01E):', probe.supported ? '✓ 支持' : '✗ 不支持', probe.config || '');
+        } catch (e) {
+          log.warn('isConfigSupported 探测失败:', e.message);
+        }
+      }
+      log.info('─────────────────');
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function closeScheduledFrames() {
+      for (const item of scheduledFrames) item.frame.close();
+      scheduledFrames.length = 0;
+    }
+
+    function scheduleDrawLoop() {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(drawLoop);
+    }
+
+    function drawLoop() {
+      rafScheduled = false;
+      const now = performance.now();
+
+      while (scheduledFrames.length > 0 && scheduledFrames[0].showAt <= now) {
+        const { frame } = scheduledFrames.shift();
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+        }
+        ctx.drawImage(frame, 0, 0);
+        frame.close();
+        framesDrawn++;
+        if (framesDrawn === 1) {
+          log.info('首帧已绘制', { width: canvas.width, height: canvas.height });
+        } else if (framesDrawn % 30 === 0) {
+          log.info(`已绘制 ${framesDrawn} 帧`);
+        }
+      }
+
+      if (scheduledFrames.length > 0) scheduleDrawLoop();
+    }
+
+    function createDecoder() {
+      if (decoder && decoder.state !== 'closed') {
+        try { decoder.close(); } catch (_) {}
+      }
+
+      decoder = new VideoDecoder({
+        output(frame) {
+          if (playbackAnchor === null) {
+            playbackAnchor = { ts: frame.timestamp, wall: performance.now() };
+            log.info('首帧解码输出', {
+              timestamp: frame.timestamp,
+              coded: `${frame.codedWidth}×${frame.codedHeight}`,
+              display: `${frame.displayWidth}×${frame.displayHeight}`,
+              format: frame.format,
+            });
+          }
+          const showAt = playbackAnchor.wall + (frame.timestamp - playbackAnchor.ts) / 1000;
+          scheduledFrames.push({ frame, showAt });
+          scheduledFrames.sort((a, b) => a.showAt - b.showAt);
+          scheduleDrawLoop();
+        },
+        error(err) {
+          log.error('[VideoDecoder]', err);
+          setStatus('解码错误：' + err.message);
+        },
+      });
+
+      log.info('VideoDecoder 已创建, state:', decoder.state);
+
+      window.decoder = decoder;
+    }
+
+    /** 从 stsd 里的 avcC box 提取 AVCDecoderConfigurationRecord */
+    function getAvcDescription(track, mp4) {
+      const trak = mp4.getTrackById(track.id);
+      const entry = trak?.mdia?.minf?.stbl?.stsd?.entries?.[0];
+      const avcC = entry?.avcC;
+      if (!avcC) return null;
+
+      // mp4box.all.js 暴露的是全局 DataStream，不是 MP4Box.DataStream
+      if (typeof DataStream !== 'undefined') {
+        const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+        avcC.write(stream);
+        return new Uint8Array(stream.buffer, 8); // 跳过 box 头（size + type）
+      }
+
+      // 兜底：手动拼装 AVCDecoderConfigurationRecord
+      const spsList = avcC.SPS || [];
+      const ppsList = avcC.PPS || [];
+      let size = 7 + spsList.reduce((n, s) => n + 2 + s.length, 0)
+                     + 1 + ppsList.reduce((n, p) => n + 2 + p.length, 0);
+      const out = new Uint8Array(size);
+      let o = 0;
+      out[o++] = avcC.configurationVersion;
+      out[o++] = avcC.AVCProfileIndication;
+      out[o++] = avcC.profile_compatibility;
+      out[o++] = avcC.AVCLevelIndication;
+      out[o++] = 0xfc | (avcC.lengthSizeMinusOne & 0x3);
+      out[o++] = avcC.nb_SPS_nals ?? spsList.length;
+      for (const sps of spsList) {
+        out[o++] = (sps.length >> 8) & 0xff;
+        out[o++] = sps.length & 0xff;
+        out.set(sps, o);
+        o += sps.length;
+      }
+      out[o++] = avcC.nb_PPS_nals ?? ppsList.length;
+      for (const pps of ppsList) {
+        out[o++] = (pps.length >> 8) & 0xff;
+        out[o++] = pps.length & 0xff;
+        out.set(pps, o);
+        o += pps.length;
+      }
+      return out;
+    }
+
+    function usFromSample(sample) {
+      return Math.round((sample.cts * 1_000_000) / sample.timescale);
+    }
+
+    function durationUsFromSample(sample) {
+      return sample.duration
+        ? Math.round((sample.duration * 1_000_000) / sample.timescale)
+        : undefined;
+    }
+
+    async function demuxAndDecode(file) {
+      const token = ++loadToken;
+      closeScheduledFrames();
+      playbackAnchor = null;
+      framesDrawn = 0;
+      createDecoder();
+
+      log.info('─── 开始加载 ───');
+      log.info('文件:', file.name);
+      log.info('大小:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+      log.info('MIME:', file.type || '(未知)');
+      setStatus('正在读取 ' + file.name + ' …');
+
+      const buffer = await file.arrayBuffer();
+      if (token !== loadToken) return;
+
+      const mp4 = MP4Box.createFile();
+      let samplesFed = 0;
+      let flushTimer = null;
+
+      function scheduleFlush() {
+        clearTimeout(flushTimer);
+        flushTimer = setTimeout(() => {
+          if (token !== loadToken || decoder.state === 'closed') return;
+          decoder.flush().then(() => {
+            if (token !== loadToken) return;
+            log.info('decoder.flush() 完成', {
+              samplesFed,
+              framesDrawn,
+              decoderState: decoder.state,
+            });
+            setStatus(`已喂入 ${samplesFed} 个 sample，Canvas 按时间戳播放中`);
+          }).catch((err) => log.error('[flush]', err));
+        }, 0);
+      }
+
+      mp4.onError = (e) => {
+        log.error('[MP4Box]', e);
+        setStatus('MP4 解析失败');
+      };
+
+      mp4.onReady = (info) => {
+        if (token !== loadToken) return;
+
+        log.info('MP4 解析完成 (onReady)');
+        log.info('时长:', info.duration, 's');
+        log.info('视频轨数:', info.videoTracks?.length ?? 0);
+        log.info('音频轨数:', info.audioTracks?.length ?? 0);
+        if (info.brands) log.info('brands:', info.brands.join(', '));
+
+        const track = info.videoTracks?.[0];
+        if (!track) {
+          log.warn('未找到视频轨');
+          setStatus('未找到视频轨');
+          return;
+        }
+
+        log.info('视频轨 #0:', {
+          id: track.id,
+          codec: track.codec,
+          width: track.video.width,
+          height: track.video.height,
+          timescale: track.timescale,
+          nb_samples: track.nb_samples,
+          duration: track.duration,
+        });
+
+        if (!track.codec.startsWith('avc1') && !track.codec.startsWith('avc3')) {
+          log.warn('不支持的 codec:', track.codec);
+          setStatus('仅支持 H.264（avc1/avc3），当前：' + track.codec);
+          return;
+        }
+
+        const description = getAvcDescription(track, mp4);
+        if (!description) {
+          log.error('avcC description 提取失败');
+          setStatus('无法提取 avcC 配置（description）');
+          return;
+        }
+
+        log.info('avcC description 长度:', description.byteLength, 'bytes');
+
+        const config = {
+          codec: track.codec,
+          description,
+          codedWidth: track.video.width,
+          codedHeight: track.video.height,
+        };
+        decoder.configure(config);
+        log.info('VideoDecoder.configure() 完成', config, 'state:', decoder.state);
+
+        setStatus(`解码中：${track.codec} ${track.video.width}×${track.video.height}`);
+
+        mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
+        mp4.start();
+      };
+
+      mp4.onSamples = (_trackId, _ref, samples) => {
+        if (token !== loadToken || decoder.state === 'closed') return;
+
+        log.info(`onSamples: 本批 ${samples.length} 个, 累计 ${samplesFed + samples.length}`);
+
+        for (const sample of samples) {
+          const chunk = new EncodedVideoChunk({
+            type: sample.is_sync ? 'key' : 'delta',
+            timestamp: usFromSample(sample),
+            duration: durationUsFromSample(sample),
+            data: sample.data,
+          });
+          decoder.decode(chunk);
+          samplesFed++;
+        }
+
+        scheduleFlush();
+      };
+
+      buffer.fileStart = 0;
+      mp4.appendBuffer(buffer);
+      mp4.flush();
+    }
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      demuxAndDecode(file).catch((err) => {
+        log.error('加载失败:', err);
+        setStatus('加载失败：' + err.message);
+      });
+    });
+
+    createDecoder();
+    printEnvInfo();
+    setStatus('选择本地 MP4 文件开始硬解码播放');
+  </script>
+</body>
+</html>

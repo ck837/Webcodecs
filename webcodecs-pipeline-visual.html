@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebCodecs 拆解流程 · 深度可视化</title>
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d;
+      --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --yellow: #d29922; --red: #f85149; --purple: #bc8cff;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.55 "Segoe UI", system-ui, sans-serif; }
+    header {
+      padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel);
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    header h1 { margin: 0; font-size: 17px; }
+    .hint { padding: 10px 24px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); }
+    .layout { display: grid; grid-template-columns: 1fr 360px; min-height: calc(100vh - 90px); }
+    @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+    .pipeline-wrap { padding: 20px 24px 60px; overflow-y: auto; }
+    .sidebar {
+      border-left: 1px solid var(--border); background: var(--panel);
+      padding: 16px; display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; height: calc(100vh - 90px);
+    }
+    .sidebar h2 { margin: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+    canvas#preview { width: 100%; background: #000; border-radius: 8px; border: 1px solid var(--border); aspect-ratio: 16/9; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+    .stat label { display: block; font-size: 10px; color: var(--muted); }
+    .stat span { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .event-log {
+      flex: 1; overflow-y: auto; font-family: Consolas, monospace; font-size: 10px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px;
+    }
+    .event-log div { margin-bottom: 3px; }
+    .event-log .t { color: var(--muted); }
+    .event-log .ok { color: var(--green); }
+    .event-log .run { color: var(--accent); }
+    .event-log .err { color: var(--red); }
+
+    .pipeline { max-width: 920px; }
+    .step {
+      display: grid; grid-template-columns: 44px 1fr; gap: 14px;
+      padding: 18px 0; position: relative;
+    }
+    .step:not(:last-child)::after {
+      content: ''; position: absolute; left: 21px; top: 70px; bottom: -4px;
+      width: 2px; background: var(--border); transition: background .4s;
+    }
+    .step.done:not(:last-child)::after { background: var(--green); }
+    .step.active:not(:last-child)::after { background: linear-gradient(var(--green), var(--accent)); }
+    .step-icon {
+      width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center; font-size: 16px;
+      background: var(--panel); z-index: 1; transition: all .3s;
+    }
+    .step.pending .step-icon { color: var(--muted); }
+    .step.active .step-icon { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(88,166,255,.18); animation: pulse 1.2s infinite; }
+    .step.done .step-icon { border-color: var(--green); background: rgba(63,185,80,.12); }
+    .step.error .step-icon { border-color: var(--red); background: rgba(248,81,73,.12); }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(88,166,255,.06); } }
+
+    .step-body {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      overflow: hidden; transition: border-color .3s;
+    }
+    .step.active .step-body { border-color: var(--accent); }
+    .step.done .step-body { border-color: rgba(63,185,80,.35); }
+    .step-head {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    }
+    .step-head h3 { margin: 0; font-size: 15px; flex: 1; }
+    .badge {
+      font-size: 10px; padding: 2px 8px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .step.active .badge { color: var(--accent); border-color: var(--accent); }
+    .step.done .badge { color: var(--green); border-color: var(--green); }
+    .step.error .badge { color: var(--red); border-color: var(--red); }
+
+    .step-content { display: grid; grid-template-columns: 240px 1fr; }
+    @media (max-width: 700px) { .step-content { grid-template-columns: 1fr; } }
+    .step-diagram {
+      padding: 14px; border-right: 1px solid var(--border); background: rgba(0,0,0,.2);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-diagram svg { width: 100%; max-width: 220px; height: auto; }
+    .step-explain { padding: 14px 16px; font-size: 13px; color: var(--muted); line-height: 1.65; }
+    .step-explain strong { color: var(--text); }
+    .step-explain code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; color: var(--purple); }
+    .step-tutorial {
+      padding: 12px 16px; border-top: 1px solid var(--border);
+      background: rgba(188,140,255,.05); font-size: 12px; line-height: 1.65; color: var(--muted);
+    }
+    .step-tutorial summary {
+      cursor: pointer; font-weight: 600; color: var(--purple); margin-bottom: 8px;
+      list-style: none;
+    }
+    .step-tutorial summary::-webkit-details-marker { display: none; }
+    .step-tutorial table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 11px; }
+    .step-tutorial th, .step-tutorial td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; }
+    .step-tutorial th { background: rgba(0,0,0,.2); color: var(--text); }
+    .step-tutorial .tip { color: var(--yellow); margin-top: 8px; }
+
+    .step-live {
+      padding: 12px 16px 14px; border-top: 1px solid var(--border); background: var(--bg);
+    }
+    .live-label {
+      font-size: 11px; font-weight: 600; color: var(--yellow); margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .step-data {
+      margin: 0; font-family: Consolas, "Cascadia Code", monospace; font-size: 11px;
+      line-height: 1.5; color: #79c0ff; white-space: pre-wrap; word-break: break-all;
+      max-height: 220px; overflow-y: auto;
+    }
+    .step-data.empty { color: var(--muted); font-style: italic; }
+
+    .step-io {
+      display: grid; grid-template-columns: 1fr 24px 1fr;
+      gap: 8px; padding: 10px 16px; border-top: 1px solid var(--border);
+      background: rgba(0,0,0,.15); font-size: 12px;
+    }
+    @media (max-width: 700px) { .step-io { grid-template-columns: 1fr; } .io-arrow { display: none; } }
+    .io-box { border-radius: 8px; padding: 10px 12px; border: 1px solid var(--border); }
+    .io-in { border-color: rgba(88,166,255,.35); background: rgba(88,166,255,.06); }
+    .io-out { border-color: rgba(63,185,80,.35); background: rgba(63,185,80,.06); }
+    .io-label { font-weight: 600; margin-bottom: 6px; font-size: 11px; }
+    .io-in .io-label { color: var(--accent); }
+    .io-out .io-label { color: var(--green); }
+    .io-from { font-weight: 400; color: var(--muted); font-size: 10px; }
+    .io-list { margin: 0; padding-left: 16px; color: var(--text); line-height: 1.55; }
+    .io-list li { margin-bottom: 2px; }
+    .io-list .val { color: #79c0ff; font-family: Consolas, monospace; font-size: 11px; }
+    .io-arrow { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 16px; }
+    .step-dep-note {
+      padding: 8px 16px; font-size: 12px; color: var(--yellow);
+      border-top: 1px solid var(--border); background: rgba(210,153,34,.06);
+    }
+    .flow-overview {
+      margin: 0 24px 16px; padding: 14px 16px; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--panel); font-size: 12px;
+      overflow-x: auto; white-space: nowrap; color: var(--muted);
+    }
+    .flow-overview b { color: var(--text); }
+    .flow-overview .node { display: inline-block; padding: 4px 10px; border-radius: 6px; margin: 0 2px; border: 1px solid var(--border); }
+    .flow-overview .node.on { border-color: var(--accent); color: var(--accent); background: rgba(88,166,255,.1); }
+    .flow-overview .arr { color: var(--muted); margin: 0 4px; }
+
+    .progress-bar { height: 3px; background: var(--border); display: none; }
+    .step.active .progress-bar { display: block; }
+    .progress-bar i { display: block; height: 100%; width: 35%; background: var(--accent); animation: slide 1s infinite; }
+    @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+
+    /* SVG 节点高亮 */
+    .step.active .svg-node { fill: rgba(88,166,255,.25); stroke: var(--accent); }
+    .step.done .svg-node { fill: rgba(63,185,80,.2); stroke: var(--green); }
+    .step.pending .svg-arrow { stroke: var(--border); }
+    .step.active .svg-arrow, .step.done .svg-arrow { stroke: var(--accent); }
+    .step.done .svg-arrow { stroke: var(--green); }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mux.js@6.3.0/dist/mux.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>WebCodecs 拆解流程 · 深度可视化</h1>
+    <input type="file" id="file" multiple accept=".mp4,.m3u8,.ts,video/mp4,video/mp2t,application/vnd.apple.mpegurl">
+    <span id="formatTag" style="font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)">自动识别格式</span>
+    <span id="globalStatus" style="color:var(--muted);font-size:13px">上传 MP4 / M3U8 / TS</span>
+  </header>
+  <div class="hint">须通过 <code>http://localhost</code> 访问 · 每步标注<strong>输入/输出</strong>及对上一步的依赖 · 支持 MP4 / M3U8 / TS</div>
+  <div class="flow-overview" id="flowOverview"></div>
+
+  <div class="layout">
+    <div class="pipeline-wrap"><div class="pipeline" id="pipeline"></div></div>
+    <aside class="sidebar">
+      <h2>Canvas 硬解预览</h2>
+      <canvas id="preview" width="640" height="360"></canvas>
+      <div class="stats">
+        <div class="stat"><label>Samples</label><span id="statSamples">0</span></div>
+        <div class="stat"><label>解码帧</label><span id="statDecoded">0</span></div>
+        <div class="stat"><label>绘制帧</label><span id="statDrawn">0</span></div>
+        <div class="stat"><label>耗时</label><span id="statTime">—</span></div>
+      </div>
+      <h2>事件流</h2>
+      <div class="event-log" id="eventLog"></div>
+    </aside>
+  </div>
+
+  <script>
+    const STEP_META = [
+      {
+        id: 'read', icon: '📁', title: '① 文件读取',
+        explain: `<strong>依赖：</strong>无（管线起点）— 用户上传文件。<br><br>
+<strong>做什么：</strong>浏览器通过 <code>File API</code> 把磁盘文件读入内存。<br><br>
+<strong>输出交给 ②：</strong>MP4/TS → <code>ArrayBuffer</code>；M3U8 → 纯文本字符串。`,
+        svg: `<svg viewBox="0 0 220 120" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="10" y="40" width="70" height="40" rx="6" fill="#21262d" stroke="#484f58"/>
+          <text x="45" y="65" text-anchor="middle" fill="#c9d1d9" font-size="11">.mp4 文件</text>
+          <line class="svg-arrow" x1="82" y1="60" x2="118" y2="60" stroke="#484f58" stroke-width="2" marker-end="url(#arr)"/>
+          <text x="100" y="52" text-anchor="middle" fill="#8b949e" font-size="9">arrayBuffer()</text>
+          <rect class="svg-node" x="120" y="30" width="90" height="60" rx="6" fill="#21262d" stroke="#484f58"/>
+          <text x="165" y="55" text-anchor="middle" fill="#79c0ff" font-size="10">ArrayBuffer</text>
+          <text x="165" y="72" text-anchor="middle" fill="#8b949e" font-size="9">原始字节流</text>
+          <defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#58a6ff"/></marker></defs>
+        </svg>`,
+      },
+      {
+        id: 'demux', icon: '📦', title: '② MP4 解封装 (Demux)',
+        explain: `<strong>依赖 ①：</strong>使用上一步的 <code>ArrayBuffer</code>（MP4）或 <code>M3U8 文本</code>（HLS）。<br><br>
+<strong>做什么：</strong><code>mp4box.js</code> 遍历 Box 树，定位 <code>moov</code> + 视频轨 <code>trak</code>。<br><br>
+<strong>输出交给 ③：</strong><code>track</code> 对象（含 codec、分辨率、sample 索引表）。`,
+        svg: `<svg viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="75" y="4" width="70" height="28" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="110" y="22" text-anchor="middle" fill="#c9d1d9" font-size="10">MP4 容器</text>
+          <line x1="90" y1="32" x2="50" y2="50" stroke="#484f58" stroke-width="1.5"/>
+          <line x1="130" y1="32" x2="170" y2="50" stroke="#484f58" stroke-width="1.5"/>
+          <rect class="svg-node" x="10" y="50" width="55" height="26" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="37" y="67" text-anchor="middle" fill="#79c0ff" font-size="9">ftyp</text>
+          <rect class="svg-node" x="75" y="50" width="55" height="26" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="102" y="67" text-anchor="middle" fill="#3fb950" font-size="9">moov ★</text>
+          <rect class="svg-node" x="140" y="50" width="55" height="26" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="167" y="67" text-anchor="middle" fill="#d29922" font-size="9">mdat</text>
+          <line x1="102" y1="76" x2="102" y2="92" stroke="#484f58"/>
+          <rect class="svg-node" x="55" y="92" width="95" height="30" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="102" y="111" text-anchor="middle" fill="#bc8cff" font-size="9">trak (video) + samples[]</text>
+        </svg>`,
+      },
+      {
+        id: 'avcc', icon: '⚙️', title: '③ 提取 avcC 配置',
+        explain: `<strong>依赖 ②：</strong>使用上一步的 <code>track</code> + mp4 文件对象，读取 <code>stsd → avcC</code>。<br><br>
+<strong>做什么：</strong>提取 H.264 的「解码说明书」— <strong>SPS</strong>（序列参数集）和 <strong>PPS</strong>（图像参数集），打包为 WebCodecs 的 <code>description</code>。<br><br>
+<strong>为什么必须有：</strong>压缩帧（P/B 帧）本身不含完整解码信息，硬件解码器启动前必须先知道 profile、level、分辨率等参数。<br><br>
+<strong>输出交给 ④：</strong><code>Uint8Array description</code>（AVCDecoderConfigurationRecord，通常 30~50 字节）。`,
+        tutorial: `<details open>
+<summary>📖 第三步详解（MP4 路径）</summary>
+<p><strong>数据从哪来？</strong> MP4 Box 链：<code>moov → trak → mdia → minf → stbl → stsd → avc1 → avcC</code></p>
+<table>
+<tr><th>NAL</th><th>类型码</th><th>作用</th><th>类比</th></tr>
+<tr><td>SPS</td><td>0x67</td><td>profile、level、分辨率</td><td>字典 / 语法规则</td></tr>
+<tr><td>PPS</td><td>0x68</td><td>熵编码、参考帧管理</td><td>标点 / 段落规则</td></tr>
+<tr><td>IDR 帧</td><td>0x65</td><td>可独立解码的关键帧</td><td>完整段落（⑤ 才喂入）</td></tr>
+</table>
+<p><strong>description 字节结构（示意）：</strong><br>
+<code>01</code> 版本 · <code>64</code> High Profile · <code>00</code> 约束 · <code>1F</code> Level 3.1 · <code>FF</code> NAL长度4字节 · SPS长度+数据 · PPS长度+数据</p>
+<p><strong>与后续步骤的关系：</strong><br>
+③ description → ④ <code>configure()</code> 初始化解码器<br>
+⑤ <code>EncodedVideoChunk.data</code> → ⑥ 实际压缩帧（必须等 ④ 完成）</p>
+<p class="tip">💡 第三步不解码画面，只提取配置。SPS 第一个字节 Hex 通常是 <code>67</code>。</p>
+</details>`,
+        svg: `<svg viewBox="0 0 220 120" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="10" y="10" width="60" height="30" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="40" y="29" text-anchor="middle" fill="#8b949e" font-size="9">stsd</text>
+          <line x1="70" y1="25" x2="90" y2="25" stroke="#484f58"/>
+          <rect class="svg-node" x="90" y="10" width="60" height="30" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="120" y="29" text-anchor="middle" fill="#58a6ff" font-size="9">avcC box</text>
+          <line x1="120" y1="40" x2="70" y2="65" stroke="#484f58"/>
+          <line x1="120" y1="40" x2="150" y2="65" stroke="#484f58"/>
+          <rect class="svg-node" x="30" y="65" width="70" height="45" rx="4" fill="#21262d" stroke="#3fb950"/>
+          <text x="65" y="85" text-anchor="middle" fill="#3fb950" font-size="10">SPS (0x67)</text>
+          <text x="65" y="100" text-anchor="middle" fill="#8b949e" font-size="8">profile/level/分辨率</text>
+          <rect class="svg-node" x="120" y="65" width="70" height="45" rx="4" fill="#21262d" stroke="#d29922"/>
+          <text x="155" y="85" text-anchor="middle" fill="#d29922" font-size="10">PPS (0x68)</text>
+          <text x="155" y="100" text-anchor="middle" fill="#8b949e" font-size="8">图像解码参数</text>
+        </svg>`,
+      },
+      {
+        id: 'config', icon: '🔧', title: '④ 配置 VideoDecoder',
+        explain: `<strong>依赖 ②③：</strong><code>codec</code> + <code>description</code>（③）+ 宽高（②）。<br><br>
+<strong>做什么：</strong><code>decoder.configure()</code> 初始化 H.264 硬件解码器。<br><br>
+<strong>输出交给 ⑤：</strong>状态变为 <code>configured</code>，可以接收压缩帧。`,
+        svg: `<svg viewBox="0 0 220 110" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="8" y="35" width="80" height="45" rx="6" fill="#21262d" stroke="#484f58"/>
+          <text x="48" y="55" text-anchor="middle" fill="#79c0ff" font-size="9">configure()</text>
+          <text x="48" y="70" text-anchor="middle" fill="#8b949e" font-size="8">codec+description</text>
+          <line class="svg-arrow" x1="90" y1="57" x2="118" y2="57" stroke="#484f58" stroke-width="2"/>
+          <polygon points="118,57 112,54 112,60" fill="#58a6ff"/>
+          <rect class="svg-node" x="120" y="20" width="90" height="70" rx="6" fill="#21262d" stroke="#484f58"/>
+          <text x="165" y="45" text-anchor="middle" fill="#3fb950" font-size="10">硬件解码器</text>
+          <text x="165" y="62" text-anchor="middle" fill="#8b949e" font-size="8">GPU / MediaEngine</text>
+          <text x="165" y="78" text-anchor="middle" fill="#8b949e" font-size="8">state: configured</text>
+        </svg>`,
+      },
+      {
+        id: 'chunk', icon: '🧩', title: '⑤ 封装 EncodedVideoChunk',
+        explain: `<strong>依赖 ②④：</strong>② 的 sample 列表 + ④ 已配置的 decoder。<br><br>
+<strong>做什么：</strong>每帧 sample → <code>EncodedVideoChunk</code>（WebCodecs 标准压缩帧对象）。<br><br>
+<strong>输出交给 ⑥：</strong><code>EncodedVideoChunk { type, timestamp, data }</code>。`,
+        svg: `<svg viewBox="0 0 220 115" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="5" y="30" width="65" height="55" rx="5" fill="#21262d" stroke="#484f58"/>
+          <text x="37" y="50" text-anchor="middle" fill="#8b949e" font-size="9">MP4 Sample</text>
+          <text x="37" y="68" text-anchor="middle" fill="#79c0ff" font-size="8">压缩 H.264</text>
+          <text x="37" y="80" text-anchor="middle" fill="#8b949e" font-size="7">xx KB / frame</text>
+          <line class="svg-arrow" x1="72" y1="57" x2="98" y2="57" stroke="#484f58" stroke-width="2"/>
+          <polygon points="98,57 92,54 92,60" fill="#58a6ff"/>
+          <rect class="svg-node" x="100" y="15" width="115" height="85" rx="5" fill="#21262d" stroke="#484f58"/>
+          <text x="157" y="35" text-anchor="middle" fill="#bc8cff" font-size="9">EncodedVideoChunk</text>
+          <text x="110" y="52" fill="#8b949e" font-size="8">type: "key"|"delta"</text>
+          <text x="110" y="66" fill="#8b949e" font-size="8">timestamp: µs</text>
+          <text x="110" y="80" fill="#8b949e" font-size="8">duration: µs</text>
+          <text x="110" y="94" fill="#79c0ff" font-size="8">data: Uint8Array</text>
+        </svg>`,
+      },
+      {
+        id: 'decode', icon: '⚡', title: '⑥ 硬解码 decode()',
+        explain: `<strong>依赖 ⑤：</strong>使用上一步的 <code>EncodedVideoChunk</code>。<br><br>
+<strong>做什么：</strong><code>decoder.decode(chunk)</code> 送入 GPU/NPU 硬解码。<br><br>
+<strong>输出交给 ⑦：</strong>异步触发 <code>output(frame)</code> 回调。`,
+        svg: `<svg viewBox="0 0 220 110" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="5" y="38" width="55" height="35" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="32" y="59" text-anchor="middle" fill="#79c0ff" font-size="8">H.264 压缩</text>
+          <line class="svg-arrow" x1="62" y1="55" x2="82" y2="55" stroke="#484f58" stroke-width="2"/>
+          <rect class="svg-node" x="84" y="25" width="52" height="60" rx="4" fill="#21262d" stroke="#3fb950"/>
+          <text x="110" y="48" text-anchor="middle" fill="#3fb950" font-size="9">HW</text>
+          <text x="110" y="62" text-anchor="middle" fill="#3fb950" font-size="9">Decoder</text>
+          <text x="110" y="76" text-anchor="middle" fill="#8b949e" font-size="7">GPU/NPU</text>
+          <line class="svg-arrow" x1="138" y1="55" x2="158" y2="55" stroke="#484f58" stroke-width="2"/>
+          <rect class="svg-node" x="160" y="38" width="55" height="35" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="187" y="59" text-anchor="middle" fill="#d29922" font-size="8">YUV 像素</text>
+        </svg>`,
+      },
+      {
+        id: 'frame', icon: '🖼️', title: '⑦ VideoFrame 输出',
+        explain: `<strong>依赖 ⑥：</strong>解码器 output 回调产出的 <code>VideoFrame</code>。<br><br>
+<strong>输出交给 ⑧：</strong>GPU 显存中的 YUV 像素帧（含 timestamp、分辨率、format）。`,
+        svg: `<svg viewBox="0 0 220 100" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="10" y="20" width="90" height="65" rx="5" fill="#21262d" stroke="#484f58"/>
+          <text x="55" y="42" text-anchor="middle" fill="#bc8cff" font-size="10">VideoFrame</text>
+          <text x="20" y="58" fill="#8b949e" font-size="8">timestamp</text>
+          <text x="20" y="72" fill="#8b949e" font-size="8">1920×1080</text>
+          <text x="20" y="86" fill="#8b949e" font-size="8">format: NV12</text>
+          <line class="svg-arrow" x1="102" y1="52" x2="122" y2="52" stroke="#484f58" stroke-width="2"/>
+          <text x="140" y="48" fill="#8b949e" font-size="8">output()</text>
+          <text x="140" y="62" fill="#8b949e" font-size="8">回调触发</text>
+        </svg>`,
+      },
+      {
+        id: 'canvas', icon: '🎨', title: '⑧ Canvas 渲染',
+        explain: `<strong>依赖 ⑦：</strong>使用 <code>VideoFrame</code> + 其 <code>timestamp</code>（来自 ⑤ 的 chunk.timestamp）。<br><br>
+<strong>做什么：</strong><code>drawImage(frame)</code> 画到 Canvas，按 timestamp 对齐播放时序。<br><br>
+<strong>输出交给 ⑨：</strong>Canvas 位图上的可见像素（frame 尚未释放）。`,
+        svg: `<svg viewBox="0 0 220 100" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="5" y="30" width="60" height="45" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="35" y="57" text-anchor="middle" fill="#bc8cff" font-size="9">VideoFrame</text>
+          <line class="svg-arrow" x1="67" y1="52" x2="87" y2="52" stroke="#484f58" stroke-width="2"/>
+          <text x="78" y="44" fill="#8b949e" font-size="7">drawImage</text>
+          <rect class="svg-node" x="89" y="20" width="60" height="60" rx="4" fill="#21262d" stroke="#3fb950"/>
+          <text x="119" y="55" text-anchor="middle" fill="#3fb950" font-size="9">Canvas</text>
+          <line class="svg-arrow" x1="151" y1="52" x2="171" y2="52" stroke="#484f58" stroke-width="2"/>
+          <rect class="svg-node" x="173" y="30" width="42" height="45" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="194" y="57" text-anchor="middle" fill="#c9d1d9" font-size="9">屏幕</text>
+        </svg>`,
+      },
+      {
+        id: 'close', icon: '♻️', title: '⑨ 释放 frame.close()',
+        explain: `<strong>依赖 ⑧：</strong>Canvas 已绘制完成的 <code>VideoFrame</code>。<br><br>
+<strong>做什么：</strong><code>frame.close()</code> 释放 GPU 纹理。<br><br>
+<strong>输出：</strong>无（管线终点）— 资源归还浏览器。`,
+        svg: `<svg viewBox="0 0 220 90" xmlns="http://www.w3.org/2000/svg">
+          <rect class="svg-node" x="20" y="15" width="70" height="40" rx="4" fill="#21262d" stroke="#484f58"/>
+          <text x="55" y="40" text-anchor="middle" fill="#bc8cff" font-size="9">VideoFrame</text>
+          <line class="svg-arrow" x1="55" y1="57" x2="55" y2="72" stroke="#f85149" stroke-width="2"/>
+          <text x="68" y="68" fill="#f85149" font-size="8">.close()</text>
+          <rect x="25" y="74" width="60" height="12" rx="2" fill="rgba(248,81,73,.2)" stroke="#f85149"/>
+          <text x="55" y="83" text-anchor="middle" fill="#f85149" font-size="7">GPU 纹理释放</text>
+        </svg>`,
+      },
+    ];
+
+    /** 按格式切换第 1~3 步的标题/图解/说明（后续 ④~⑨ 与 MP4 相同） */
+    const FORMAT_PATCH = {
+      mp4: {},
+      m3u8: {
+        read: {
+          title: '① 读取 M3U8 播放列表',
+          explain: `<strong>做什么：</strong>读取 <code>.m3u8</code> 纯文本播放列表（HLS 索引），不是二进制视频本身。<br><br>
+<strong>文件内容：</strong><code>#EXTM3U</code> 开头，含 <code>#EXTINF</code>（每段时长）和分片 URI（<code>.ts</code> 或 <code>.m4s</code>）。<br><br>
+<strong>与 MP4 区别：</strong>MP4 是一个完整容器；M3U8 只是「目录」，真正视频在多个分片里。`,
+          svg: `<svg viewBox="0 0 220 120" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="10" y="40" width="75" height="40" rx="6" fill="#21262d" stroke="#484f58"/>
+            <text x="47" y="58" text-anchor="middle" fill="#c9d1d9" font-size="10">.m3u8</text>
+            <text x="47" y="72" text-anchor="middle" fill="#8b949e" font-size="8">纯文本</text>
+            <line class="svg-arrow" x1="87" y1="60" x2="118" y2="60" stroke="#484f58" stroke-width="2"/>
+            <text x="102" y="52" text-anchor="middle" fill="#8b949e" font-size="8">.text()</text>
+            <rect class="svg-node" x="120" y="25" width="90" height="70" rx="6" fill="#21262d" stroke="#484f58"/>
+            <text x="165" y="48" text-anchor="middle" fill="#79c0ff" font-size="9">#EXTM3U</text>
+            <text x="165" y="62" text-anchor="middle" fill="#8b949e" font-size="8">#EXTINF:6.0</text>
+            <text x="165" y="76" text-anchor="middle" fill="#d29922" font-size="8">seg001.ts</text>
+            <text x="165" y="90" text-anchor="middle" fill="#d29922" font-size="8">seg002.ts</text>
+          </svg>`,
+        },
+        demux: {
+          title: '② M3U8 解析 (Playlist Demux)',
+          explain: `<strong>做什么：</strong>解析 HLS 标签，提取分片 URL 列表、目标时长 <code>#EXT-X-TARGETDURATION</code>、版本号等。<br><br>
+<strong>输出什么：</strong>分片 URI 数组 + 每段时长。若是 Master Playlist 还会列出多码率变体。<br><br>
+<strong>关键标签：</strong><code>#EXT-X-VERSION</code> · <code>#EXTINF</code> · <code>#EXT-X-MEDIA-SEQUENCE</code>`,
+          svg: `<svg viewBox="0 0 220 130" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="70" y="4" width="80" height="28" rx="4" fill="#21262d" stroke="#484f58"/>
+            <text x="110" y="22" text-anchor="middle" fill="#c9d1d9" font-size="10">index.m3u8</text>
+            <line x1="80" y1="32" x2="45" y2="55" stroke="#484f58"/>
+            <line x1="140" y1="32" x2="175" y2="55" stroke="#484f58"/>
+            <rect class="svg-node" x="10" y="55" width="70" height="24" rx="4" fill="#21262d" stroke="#484f58"/>
+            <text x="45" y="71" text-anchor="middle" fill="#58a6ff" font-size="8">#EXT-X-TARGET</text>
+            <rect class="svg-node" x="140" y="55" width="70" height="24" rx="4" fill="#21262d" stroke="#484f58"/>
+            <text x="175" y="71" text-anchor="middle" fill="#58a6ff" font-size="8">#EXTINF</text>
+            <line x1="110" y1="32" x2="110" y2="90" stroke="#484f58"/>
+            <rect class="svg-node" x="45" y="90" width="130" height="32" rx="4" fill="#21262d" stroke="#3fb950"/>
+            <text x="110" y="110" text-anchor="middle" fill="#3fb950" font-size="9">segments[] → .ts / .m4s URLs</text>
+          </svg>`,
+        },
+        avcc: {
+          title: '③ TS 解封装 + 提取 avcC',
+          explain: `<strong>依赖 ②：</strong>M3U8 解析出的 <code>segments[]</code> 分片 URI 列表。<br><br>
+<strong>做什么（三步合一）：</strong><br>
+① 按 URI 加载每个 <code>.ts</code> 分片<br>
+② <code>mux.js</code> 把 MPEG-TS 转为 fMP4（mp4box 无法直接读 TS）<br>
+③ 从 fMP4 init segment 提取 <code>avcC</code> → <code>description</code><br><br>
+<strong>TS 特征：</strong>固定 188 字节/包，同步字节 <code>0x47</code>。`,
+          tutorial: `<details open>
+<summary>📖 第三步详解（M3U8 / HLS 路径）</summary>
+<p><strong>和 MP4 路径的区别：</strong> MP4 ② 直接得到 track；M3U8 ② 只得到分片 URL 列表，本步才加载并转换 TS。</p>
+<p><strong>为什么要 transmux？</strong> mp4box.js 擅长 MP4/fMP4 Box 树，不直接解析 TS。mux.js 把 TS 包里的 H.264 PES 流重封装为 fMP4，之后就能复用和 MP4 完全相同的 avcC 提取逻辑。</p>
+<table>
+<tr><th>阶段</th><th>输入</th><th>输出</th></tr>
+<tr><td>加载分片</td><td>segments[] ← ②</td><td>TS ArrayBuffer[]</td></tr>
+<tr><td>transmux</td><td>TS 二进制</td><td>fMP4 init + fragments</td></tr>
+<tr><td>提取 avcC</td><td>fMP4 init</td><td>description ← 交给 ④</td></tr>
+</table>
+<p class="tip">💡 本地测试需同时选中 .m3u8 和 .ts 文件；远程 m3u8 的分片 URL 需可 fetch（CORS）。</p>
+</details>`,
+          svg: `<svg viewBox="0 0 220 120" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="5" y="35" width="55" height="50" rx="4" fill="#21262d" stroke="#484f58"/>
+            <text x="32" y="55" text-anchor="middle" fill="#d29922" font-size="9">.ts</text>
+            <text x="32" y="70" text-anchor="middle" fill="#8b949e" font-size="7">188B 包</text>
+            <text x="32" y="82" text-anchor="middle" fill="#8b949e" font-size="7">0x47 同步</text>
+            <line class="svg-arrow" x1="62" y1="60" x2="82" y2="60" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="84" y="30" width="50" height="60" rx="4" fill="#21262d" stroke="#58a6ff"/>
+            <text x="109" y="55" text-anchor="middle" fill="#58a6ff" font-size="8">mux.js</text>
+            <text x="109" y="70" text-anchor="middle" fill="#8b949e" font-size="7">Transmuxer</text>
+            <line class="svg-arrow" x1="136" y1="60" x2="156" y2="60" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="158" y="20" width="58" height="80" rx="4" fill="#21262d" stroke="#3fb950"/>
+            <text x="187" y="42" text-anchor="middle" fill="#3fb950" font-size="8">fMP4 init</text>
+            <text x="187" y="58" text-anchor="middle" fill="#8b949e" font-size="7">+ moof/mdat</text>
+            <text x="187" y="78" text-anchor="middle" fill="#bc8cff" font-size="8">avcC</text>
+            <text x="187" y="92" text-anchor="middle" fill="#8b949e" font-size="7">SPS/PPS</text>
+          </svg>`,
+        },
+      },
+      ts: {
+        read: {
+          title: '① 读取 TS 分片',
+          explain: `<strong>做什么：</strong>直接读取 MPEG-TS 二进制分片（HLS 的 <code>.ts</code> 文件），无需 M3U8 索引。<br><br>
+<strong>TS 结构：</strong>固定 188 字节 Transport Stream 包，同步字节 <code>0x47</code>，视频通常在 PID 0x100 的 PES 里。`,
+          svg: `<svg viewBox="0 0 220 100" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="20" y="30" width="80" height="45" rx="6" fill="#21262d" stroke="#484f58"/>
+            <text x="60" y="58" text-anchor="middle" fill="#d29922" font-size="11">.ts 文件</text>
+            <line class="svg-arrow" x1="102" y1="52" x2="122" y2="52" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="124" y="25" width="76" height="55" rx="6" fill="#21262d" stroke="#484f58"/>
+            <text x="162" y="48" text-anchor="middle" fill="#79c0ff" font-size="9">ArrayBuffer</text>
+            <text x="162" y="65" text-anchor="middle" fill="#8b949e" font-size="8">0x47 0x40 0x11…</text>
+          </svg>`,
+        },
+        demux: {
+          title: '② TS 解封装 (Transmux)',
+          explain: `<strong>做什么：</strong><code>mux.js</code> 解析 TS 包，从 PES 中提取 H.264 ES 流，重封装为 fragmented MP4（fMP4）。<br><br>
+<strong>为什么转 fMP4：</strong>mp4box.js 擅长 MP4/fMP4 解析，TS 需先 transmux 才能复用同一套 sample 提取逻辑。`,
+          svg: `<svg viewBox="0 0 220 120" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="5" y="35" width="55" height="50" rx="4" fill="#21262d" stroke="#484f58"/>
+            <text x="32" y="55" text-anchor="middle" fill="#d29922" font-size="9">.ts</text>
+            <text x="32" y="70" text-anchor="middle" fill="#8b949e" font-size="7">188B 包</text>
+            <line class="svg-arrow" x1="62" y1="60" x2="82" y2="60" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="84" y="30" width="50" height="60" rx="4" fill="#21262d" stroke="#58a6ff"/>
+            <text x="109" y="55" text-anchor="middle" fill="#58a6ff" font-size="8">mux.js</text>
+            <line class="svg-arrow" x1="136" y1="60" x2="156" y2="60" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="158" y="20" width="58" height="80" rx="4" fill="#21262d" stroke="#3fb950"/>
+            <text x="187" y="42" text-anchor="middle" fill="#3fb950" font-size="8">fMP4 init</text>
+            <text x="187" y="78" text-anchor="middle" fill="#bc8cff" font-size="8">avcC</text>
+          </svg>`,
+        },
+        avcc: {
+          title: '③ 提取 avcC 配置',
+          explain: `<strong>依赖 ②：</strong>transmux 产出的 fMP4 init segment（含 moov + avcC）。<br><br>
+<strong>做什么：</strong>与 MP4 路径<strong>完全相同</strong> — 从 init segment 的 <code>stsd → avcC</code> 提取 SPS/PPS，组装 <code>description</code>。<br><br>
+<strong>汇合点：</strong>MP4 / M3U8 / TS 三条路在此产出相同的 <code>description</code>，交给 ④。`,
+          tutorial: `<details open>
+<summary>📖 第三步详解（TS 路径 · avcC 部分）</summary>
+<p>TS 路径在 ② 已完成 transmux，本步只做 avcC 提取，逻辑与 MP4 路径一致。</p>
+<p><strong>③ → ④ 传递的关键数据：</strong></p>
+<pre style="margin:6px 0;padding:8px;background:var(--bg);border-radius:4px;font-size:11px;color:#79c0ff">decoder.configure({
+  codec: "avc1.64001E",    // 来自 ② track
+  description: Uint8Array, // ★ 来自 ③
+  codedWidth: 1920,        // 来自 ②
+  codedHeight: 1080
+})</pre>
+<p class="tip">💡 ③ 是「说明书」，⑤ 才是「正文」。没有 ③，⑤ 的 decode() 会失败或花屏。</p>
+</details>`,
+          svg: `<svg viewBox="0 0 220 100" xmlns="http://www.w3.org/2000/svg">
+            <rect class="svg-node" x="30" y="30" width="70" height="40" rx="4" fill="#21262d" stroke="#58a6ff"/>
+            <text x="65" y="55" text-anchor="middle" fill="#58a6ff" font-size="9">fMP4 init</text>
+            <line class="svg-arrow" x1="102" y1="50" x2="122" y2="50" stroke="#484f58" stroke-width="2"/>
+            <rect class="svg-node" x="124" y="25" width="70" height="50" rx="4" fill="#21262d" stroke="#3fb950"/>
+            <text x="159" y="48" text-anchor="middle" fill="#3fb950" font-size="9">avcC</text>
+            <text x="159" y="65" text-anchor="middle" fill="#8b949e" font-size="8">SPS + PPS</text>
+          </svg>`,
+        },
+      },
+    };
+
+    const pipelineEl = document.getElementById('pipeline');
+    const eventLogEl = document.getElementById('eventLog');
+    const canvas = document.getElementById('preview');
+    const ctx = canvas.getContext('2d');
+    const fileInput = document.getElementById('file');
+    const globalStatus = document.getElementById('globalStatus');
+    const formatTag = document.getElementById('formatTag');
+    const statSamples = document.getElementById('statSamples');
+    const statDecoded = document.getElementById('statDecoded');
+    const statDrawn = document.getElementById('statDrawn');
+    const statTime = document.getElementById('statTime');
+
+    let stepEls = {}, loadToken = 0, t0 = 0, decoder = null, playbackAnchor = null;
+    let currentFormat = 'mp4', sourceFileMeta = null;
+    const scheduledFrames = [];
+    let rafScheduled = false, samplesFed = 0, framesDecoded = 0, framesDrawn = 0, framesClosed = 0;
+    let firstSampleRef = null, avcCRef = null;
+    let mp4State = { track: null, keyCount: 0, deltaCount: 0, flushTimer: null };
+    const pipelineOut = {}; // 每步输出，供下一步引用
+
+    const STEP_ORDER = ['read','demux','avcc','config','chunk','decode','frame','canvas','close'];
+    const STEP_NUM = Object.fromEntries(STEP_ORDER.map((id, i) => [id, '①②③④⑤⑥⑦⑧⑨'[i]]));
+    const STEP_DEP = { read:null, demux:'read', avcc:'demux', config:'avcc', chunk:'config', decode:'chunk', frame:'decode', canvas:'frame', close:'canvas' };
+    const STEP_NEXT = { read:'demux', demux:'avcc', avcc:'config', config:'chunk', chunk:'decode', decode:'frame', frame:'canvas', canvas:'close' };
+
+    function stepTitle(id) {
+      return stepEls[id]?.querySelector('.step-head h3')?.textContent?.replace(/^./, '') || id;
+    }
+
+    function formatStepData(stepId, inputLines, outputLines, detail) {
+      const dep = STEP_DEP[stepId];
+      const next = STEP_NEXT[stepId];
+      let s = '┌─ 📥 输入';
+      s += dep ? `（依赖 ${STEP_NUM[dep]} ${stepTitle(dep)}）` : '（管线起点 · 用户上传）';
+      s += ' ─────────────────\n';
+      (inputLines || ['—']).forEach(l => { s += `│  • ${l}\n`; });
+      s += '│\n├─ 📤 输出';
+      s += next ? ` → 交给 ${STEP_NUM[next]}` : '（管线终点）';
+      s += ' ─────────────────\n';
+      (outputLines || ['—']).forEach(l => { s += `│  • ${l}\n`; });
+      s += '│\n└─ 📊 本步真实数据 ─────────────────\n' + detail;
+      return s;
+    }
+
+    function updateIoPanel(stepId, inputLines, outputLines) {
+      const el = stepEls[stepId];
+      if (!el) return;
+      const inList = el.querySelector('.io-in-list');
+      const outList = el.querySelector('.io-out-list');
+      const fromTag = el.querySelector('.io-from');
+      if (inList) inList.innerHTML = (inputLines || []).map(l => `<li>${l}</li>`).join('') || '<li>—</li>';
+      if (outList) outList.innerHTML = (outputLines || []).map(l => `<li>${l}</li>`).join('') || '<li>—</li>';
+      if (fromTag) {
+        const dep = STEP_DEP[stepId];
+        fromTag.textContent = dep ? `← 来自 ${STEP_NUM[dep]}` : '← 用户上传';
+      }
+    }
+
+    function setStepDone(stepId, inputLines, outputLines, detail) {
+      updateIoPanel(stepId, inputLines, outputLines);
+      setStep(stepId, 'done', formatStepData(stepId, inputLines, outputLines, detail));
+      highlightFlowStep(stepId);
+    }
+
+    function highlightFlowStep(activeId) {
+      const idx = STEP_ORDER.indexOf(activeId);
+      flowOverviewEl.innerHTML = STEP_ORDER.map((id, i) => {
+        const cls = i <= idx ? 'node on' : 'node';
+        const arrow = i < STEP_ORDER.length - 1 ? '<span class="arr">→</span>' : '';
+        return `<span class="${cls}">${STEP_NUM[id]} ${id}</span>${arrow}`;
+      }).join('');
+    }
+
+    const flowOverviewEl = document.getElementById('flowOverview');
+
+    function applyFormatPatch(format) {
+      currentFormat = format;
+      const patch = FORMAT_PATCH[format] || {};
+      const labels = { mp4: 'MP4 容器', m3u8: 'M3U8 / HLS', ts: 'MPEG-TS 分片' };
+      formatTag.textContent = labels[format] || format;
+      formatTag.style.color = format === 'mp4' ? 'var(--green)' : format === 'm3u8' ? 'var(--yellow)' : 'var(--accent)';
+      STEP_META.forEach(s => {
+        const el = stepEls[s.id];
+        if (!el) return;
+        const p = patch[s.id];
+        if (p?.title) el.querySelector('.step-head h3').textContent = p.title;
+        if (p?.explain) el.querySelector('.step-explain').innerHTML = p.explain;
+        if (p?.svg) el.querySelector('.step-diagram').innerHTML = p.svg;
+        const tutEl = el.querySelector('.step-tutorial');
+        if (p?.tutorial) {
+          if (tutEl) tutEl.innerHTML = p.tutorial;
+          else {
+            const div = document.createElement('div');
+            div.className = 'step-tutorial';
+            div.innerHTML = p.tutorial;
+            el.querySelector('.step-io')?.before(div);
+          }
+        } else if (tutEl && !STEP_META.find(m => m.id === s.id)?.tutorial) {
+          tutEl.remove();
+        }
+      });
+    }
+
+    function detectFormat(files) {
+      const list = [...files];
+      if (list.some(f => /\.m3u8$/i.test(f.name) || f.type === 'application/vnd.apple.mpegurl')) return 'm3u8';
+      if (list.every(f => /\.ts$/i.test(f.name) || f.type === 'video/mp2t')) return 'ts';
+      if (list.length === 1 && /\.mp4$/i.test(list[0].name)) return 'mp4';
+      if (list.length === 1) {
+        const n = list[0].name.toLowerCase();
+        if (n.endsWith('.m3u8')) return 'm3u8';
+        if (n.endsWith('.ts')) return 'ts';
+      }
+      return 'mp4';
+    }
+
+    function buildFileMap(files) {
+      const map = new Map();
+      for (const f of files) {
+        map.set(f.name, f);
+        map.set(f.name.split('/').pop(), f);
+      }
+      return map;
+    }
+
+    function parseM3u8(text) {
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const meta = { version: null, targetDuration: null, mediaSequence: 0, segments: [], variants: [], isMaster: false };
+      let pendingDuration = 0;
+      let pendingTitle = '';
+      for (const line of lines) {
+        if (line.startsWith('#EXT-X-VERSION:')) meta.version = parseInt(line.split(':')[1], 10);
+        else if (line.startsWith('#EXT-X-TARGETDURATION:')) meta.targetDuration = parseFloat(line.split(':')[1]);
+        else if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) meta.mediaSequence = parseInt(line.split(':')[1], 10);
+        else if (line.startsWith('#EXT-X-STREAM-INF:')) { meta.isMaster = true; pendingTitle = line; }
+        else if (line.startsWith('#EXTINF:')) pendingDuration = parseFloat(line.split(':')[1]);
+        else if (!line.startsWith('#')) {
+          if (meta.isMaster && pendingTitle) {
+            meta.variants.push({ uri: line, info: pendingTitle });
+            pendingTitle = '';
+          } else {
+            meta.segments.push({ uri: line, duration: pendingDuration });
+            pendingDuration = 0;
+          }
+        }
+      }
+      return meta;
+    }
+
+    function resolveSegmentUri(uri, baseName, fileMap) {
+      const name = uri.split('?')[0].split('/').pop();
+      if (fileMap.has(name)) return { type: 'file', file: fileMap.get(name), name };
+      if (/^https?:\/\//i.test(uri)) return { type: 'url', url: uri, name };
+      return { type: 'missing', uri, name };
+    }
+
+    async function loadSegmentBuffer(resolved) {
+      if (resolved.type === 'file') return resolved.file.arrayBuffer();
+      if (resolved.type === 'url') {
+        const r = await fetch(resolved.url);
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${resolved.url}`);
+        return r.arrayBuffer();
+      }
+      throw new Error(`找不到分片 "${resolved.uri}"\n请同时选中 .m3u8 和 .ts 文件，或使用带 http URL 的 m3u8`);
+    }
+
+    function transmuxTsBuffers(tsBuffers) {
+      return new Promise((resolve, reject) => {
+        if (typeof muxjs === 'undefined') { reject(new Error('mux.js 未加载')); return; }
+        const transmuxer = new muxjs.mp4.Transmuxer({ keepOriginalTimestamps: true });
+        let initSegment = null;
+        const fragments = [];
+        transmuxer.on('data', seg => {
+          if (seg.initSegment) initSegment = toUint8Array(seg.initSegment);
+          if (seg.data) fragments.push(toUint8Array(seg.data));
+        });
+        try {
+          for (const buf of tsBuffers) transmuxer.push(toUint8Array(buf));
+          transmuxer.flush();
+          queueMicrotask(() => {
+            if (!initSegment) reject(new Error('transmux 未产生 init segment（需 H.264 TS 流）'));
+            else resolve({ initSegment, fragments });
+          });
+        } catch (e) { reject(e); }
+      });
+    }
+
+    function analyzeTsHeader(buffer) {
+      const u8 = toUint8Array(buffer);
+      let syncCount = 0;
+      for (let i = 0; i < Math.min(u8.length, 1880); i += 188) {
+        if (u8[i] === 0x47) syncCount++;
+      }
+      return { packetSize: 188, syncByte: u8[0], syncPacketsIn10: syncCount, totalBytes: u8.length };
+    }
+    /** mp4box 的 SPS/PPS 可能是 Array 而非 Uint8Array，统一转换 */
+    function toUint8Array(data) {
+      if (!data) return new Uint8Array(0);
+      if (data instanceof Uint8Array) return data;
+      if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (Array.isArray(data)) return Uint8Array.from(data);
+      if (data.nalunit) return toUint8Array(data.nalunit);
+      if (data.data) return toUint8Array(data.data);
+      return Uint8Array.from(Object.values(data));
+    }
+
+    function hexDump(data, max = 80) {
+      const u8 = toUint8Array(data);
+      if (!u8.length) return '(空)';
+      const lines = [];
+      for (let i = 0; i < Math.min(u8.length, max); i += 16) {
+        const chunk = u8.subarray(i, i + 16);
+        const hex = [...chunk].map(b => b.toString(16).padStart(2, '0')).join(' ');
+        const asc = [...chunk].map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+        lines.push(`${i.toString(16).padStart(6, '0')}  ${hex.padEnd(47)}  ${asc}`);
+      }
+      if (u8.length > max) lines.push(`... 共 ${u8.length} bytes，仅显示前 ${max} 字节`);
+      return lines.join('\n');
+    }
+
+    function parseTopBoxes(buffer, max = 6) {
+      const boxes = [];
+      let off = 0;
+      const dv = new DataView(buffer);
+      while (off + 8 <= buffer.byteLength && boxes.length < max) {
+        let size = dv.getUint32(off);
+        const type = new TextDecoder().decode(new Uint8Array(buffer, off + 4, 4));
+        if (size === 1 && off + 16 <= buffer.byteLength) size = Number(dv.getBigUint64(off + 8));
+        if (size < 8) break;
+        boxes.push({ type, size, offset: off });
+        off += size;
+      }
+      return boxes;
+    }
+
+    function parseFtyp(buffer) {
+      const boxes = parseTopBoxes(buffer, 1);
+      if (boxes[0]?.type !== 'ftyp') return null;
+      const off = boxes[0].offset + 8;
+      const u8 = new Uint8Array(buffer, off, Math.min(20, boxes[0].size - 8));
+      const td = new TextDecoder();
+      return {
+        major: td.decode(u8.subarray(0, 4)),
+        minor: new DataView(u8.buffer, u8.byteOffset + 4, 4).getUint32(0),
+        compatible: [],
+      };
+    }
+
+    function analyzeNals(data, max = 6) {
+      const u8 = toUint8Array(data);
+      const nals = [];
+      let o = 0;
+      while (o + 4 <= u8.length && nals.length < max) {
+        const len = (u8[o] << 24) | (u8[o + 1] << 16) | (u8[o + 2] << 8) | u8[o + 3];
+        o += 4;
+        if (len <= 0 || o + len > u8.length) break;
+        const t = u8[o] & 0x1f;
+        const names = { 1: 'Non-IDR Slice', 5: 'IDR Slice ★', 6: 'SEI', 7: 'SPS', 8: 'PPS', 9: 'AUD' };
+        nals.push({ offset: o - 4, length: len, nalType: t, name: names[t] || `type ${t}`, header: u8[o] });
+        o += len;
+      }
+      return nals;
+    }
+
+    function profileName(p) {
+      return { 66: 'Baseline', 77: 'Main', 88: 'Extended', 100: 'High' }[p] || `Profile ${p}`;
+    }
+
+    function explainAvcCBytes(avcC, desc, sps0, pps0, track) {
+      const nalSps = sps0 ? (sps0[0] & 0x1f) : null;
+      const nalPps = pps0 ? (pps0[0] & 0x1f) : null;
+      return `// ── 字段解读（你的视频）──
+configurationVersion:  ${avcC.configurationVersion}
+AVCProfileIndication:  0x${avcC.AVCProfileIndication.toString(16)} → ${profileName(avcC.AVCProfileIndication)}
+AVCLevelIndication:    0x${avcC.AVCLevelIndication.toString(16)} → Level ${avcC.AVCLevelIndication / 10}
+lengthSizeMinusOne:    ${avcC.lengthSizeMinusOne} → 每 NAL 前 ${avcC.lengthSizeMinusOne + 1} 字节长度前缀
+
+codec 字符串: "${track.codec}"
+  avc1 = H.264 in MP4 容器
+  ${track.codec.slice(5, 7)} = profile, ${track.codec.slice(9, 11)} = level
+
+SPS (序列参数集) ${sps0?.length ?? 0} bytes · NAL type=${nalSps} ${nalSps === 7 ? '✓' : ''}
+${sps0 ? hexDump(sps0, 48) : '无'}
+
+PPS (图像参数集) ${pps0?.length ?? 0} bytes · NAL type=${nalPps} ${nalPps === 8 ? '✓' : ''}
+${pps0 ? hexDump(pps0, 32) : '无'}
+
+// 交给 ④ configure() 的 description (${desc.byteLength} bytes)
+${hexDump(desc, 64)}
+
+→ 下一步: decoder.configure({ description: 上面的字节 })`;
+    }
+
+    function getAvcDescription(track, mp4) {
+      const avcC = mp4.getTrackById(track.id)?.mdia?.minf?.stbl?.stsd?.entries?.[0]?.avcC;
+      if (!avcC) return { bytes: null, avcC };
+      avcCRef = avcC;
+      if (typeof DataStream !== 'undefined') {
+        const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+        avcC.write(stream);
+        return { bytes: new Uint8Array(stream.buffer, 8), avcC };
+      }
+      const sps = avcC.SPS || [], pps = avcC.PPS || [];
+      let sz = 7 + sps.reduce((n, s) => n + 2 + s.length, 0) + 1 + pps.reduce((n, p) => n + 2 + p.length, 0);
+      const out = new Uint8Array(sz);
+      let o = 0;
+      out[o++] = avcC.configurationVersion;
+      out[o++] = avcC.AVCProfileIndication;
+      out[o++] = avcC.profile_compatibility;
+      out[o++] = avcC.AVCLevelIndication;
+      out[o++] = 0xfc | (avcC.lengthSizeMinusOne & 3);
+      out[o++] = avcC.nb_SPS_nals ?? sps.length;
+      for (const s of sps) { const b = toUint8Array(s); out[o++] = (b.length >> 8) & 0xff; out[o++] = b.length & 0xff; out.set(b, o); o += b.length; }
+      out[o++] = avcC.nb_PPS_nals ?? pps.length;
+      for (const p of pps) { const b = toUint8Array(p); out[o++] = (b.length >> 8) & 0xff; out[o++] = b.length & 0xff; out.set(b, o); o += b.length; }
+      return { bytes: out, avcC };
+    }
+
+    function buildPipeline() {
+      pipelineEl.innerHTML = STEP_META.map(s => {
+        const dep = STEP_DEP[s.id];
+        const next = STEP_NEXT[s.id];
+        return `
+        <div class="step pending" data-step="${s.id}">
+          <div class="step-icon">${s.icon}</div>
+          <div class="step-body">
+            <div class="step-head">
+              <h3>${s.title}</h3>
+              <span class="badge">等待中</span>
+            </div>
+            ${dep ? `<div class="step-dep-note">🔗 依赖 <b>${STEP_NUM[dep]}</b> 的输出${next ? ` · 本步输出交给 <b>${STEP_NUM[next]}</b>` : ''}</div>` : `<div class="step-dep-note">🚀 管线起点${next ? ` · 输出交给 <b>${STEP_NUM[next]}</b>` : ''}</div>`}
+            <div class="step-content">
+              <div class="step-diagram">${s.svg}</div>
+              <div class="step-explain">${s.explain}</div>
+            </div>
+            ${s.tutorial ? `<div class="step-tutorial">${s.tutorial}</div>` : ''}
+            <div class="step-io">
+              <div class="io-box io-in">
+                <div class="io-label">📥 输入 <span class="io-from">${dep ? `← 来自 ${STEP_NUM[dep]}` : '← 用户上传'}</span></div>
+                <ul class="io-in-list io-list"><li>等待…</li></ul>
+              </div>
+              <div class="io-arrow">→</div>
+              <div class="io-box io-out">
+                <div class="io-label">📤 输出${next ? ` → ${STEP_NUM[next]}` : ''}</div>
+                <ul class="io-out-list io-list"><li>等待…</li></ul>
+              </div>
+            </div>
+            <div class="step-live">
+              <div class="live-label">📊 本步真实数据（含输入/输出摘要）</div>
+              <pre class="step-data empty">等待上一步完成…</pre>
+            </div>
+            <div class="progress-bar"><i></i></div>
+          </div>
+        </div>`;
+      }).join('');
+      stepEls = {};
+      STEP_META.forEach(s => { stepEls[s.id] = pipelineEl.querySelector(`[data-step="${s.id}"]`); });
+      flowOverviewEl.innerHTML = STEP_ORDER.map((id, i) =>
+        `<span class="node">${STEP_NUM[id]} ${id}</span>${i < STEP_ORDER.length - 1 ? '<span class="arr">→</span>' : ''}`
+      ).join('');
+    }
+
+    function elapsed() { return ((performance.now() - t0) / 1000).toFixed(2) + 's'; }
+
+    function addEvent(cls, msg) {
+      const d = document.createElement('div');
+      d.innerHTML = `<span class="t">[+${elapsed()}]</span> <span class="${cls}">${msg}</span>`;
+      eventLogEl.appendChild(d);
+      eventLogEl.scrollTop = eventLogEl.scrollHeight;
+    }
+
+    function setStep(id, state, liveText) {
+      const el = stepEls[id];
+      if (!el) return;
+      el.className = 'step ' + state;
+      el.querySelector('.badge').textContent = { active: '进行中', done: '完成', error: '失败', pending: '等待中' }[state] || state;
+      if (liveText !== undefined) {
+        const pre = el.querySelector('.step-data');
+        pre.textContent = liveText;
+        pre.classList.toggle('empty', !liveText);
+      }
+    }
+
+    function resetAll() {
+      STEP_META.forEach(s => setStep(s.id, 'pending', ''));
+      eventLogEl.innerHTML = '';
+      scheduledFrames.forEach(x => { try { x.frame.close(); } catch (_) {} });
+      scheduledFrames.length = 0;
+      playbackAnchor = null;
+      samplesFed = framesDecoded = framesDrawn = framesClosed = 0;
+      firstSampleRef = avcCRef = null;
+      mp4State = { track: null, keyCount: 0, deltaCount: 0, flushTimer: null };
+      Object.keys(pipelineOut).forEach(k => delete pipelineOut[k]);
+      statSamples.textContent = statDecoded.textContent = statDrawn.textContent = '0';
+      statTime.textContent = '—';
+      if (decoder?.state !== 'closed') { try { decoder.close(); } catch (_) {} }
+      decoder = null;
+    }
+
+    function scheduleDraw() {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(drawLoop);
+    }
+
+    function drawLoop() {
+      rafScheduled = false;
+      const now = performance.now();
+      while (scheduledFrames.length && scheduledFrames[0].showAt <= now) {
+        const { frame } = scheduledFrames.shift();
+        if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+        }
+
+        if (framesDrawn === 0) {
+          setStepDone('canvas',
+            [`VideoFrame ← ⑦`, `timestamp: ${frame.timestamp} µs ← ⑤/⑦`, `${frame.displayWidth}×${frame.displayHeight} ← ⑦`],
+            [`Canvas 像素 (${canvas.width}×${canvas.height})`, '屏幕可见画面'],
+            `ctx.drawImage(frame, 0, 0);\ntimestamp: ${frame.timestamp} µs\nformat: ${frame.format}`);
+        } else {
+          setStep('canvas', 'done', `已绘制 ${framesDrawn + 1} 帧 · ts=${frame.timestamp} µs`);
+        }
+
+        ctx.drawImage(frame, 0, 0);
+        framesDrawn++;
+        statDrawn.textContent = framesDrawn;
+        if (framesDrawn === 1) addEvent('ok', `Canvas 首帧绘制 ${frame.displayWidth}×${frame.displayHeight}`);
+
+        setStep('close', 'active',
+          `// 必须手动释放 — 否则 GPU OOM\nframe.close();\n\n已释放: ${framesClosed + 1} 个 VideoFrame\n当前帧 ts: ${frame.timestamp} µs\n\n⚠ VideoFrame 持有 GPU 纹理\n   不 close → 内存泄漏\n   每个 output 帧必须 close 一次`);
+        frame.close();
+        framesClosed++;
+        if (framesClosed === 1) setStepDone('close',
+          [`VideoFrame ← ⑧ (已 drawImage)`, `frame.timestamp: ${frame.timestamp} ← ⑦`],
+          ['GPU 纹理已释放', '内存归还浏览器', '无下游步骤'],
+          `frame.close();\n\n// 生命周期链\n⑤ chunk → ⑥ decode → ⑦ frame → ⑧ canvas → ⑨ close\n\n累计释放: ${framesClosed} 帧`);
+        else if (framesClosed % 60 === 0) setStep('close', 'done', `累计释放 ${framesClosed} 个 VideoFrame`);
+      }
+      if (scheduledFrames.length) scheduleDraw();
+    }
+
+    function createDecoder() {
+      decoder = new VideoDecoder({
+        output(frame) {
+          framesDecoded++;
+          statDecoded.textContent = framesDecoded;
+
+          if (framesDecoded === 1) {
+            setStepDone('decode',
+              [`EncodedVideoChunk ← ⑤`, `type: "${pipelineOut.chunk?.type}" ← ⑤`, `timestamp: ${pipelineOut.chunk?.timestamp} ← ⑤`, `decoder (configured) ← ④`],
+              [`触发 output(frame) 回调`, '异步硬解码完成', `decoder.state: ${decoder.state}`],
+              `decoder.decode(chunk) 完成首帧\n\n// 输入来自 ⑤\nchunk.type:      "${pipelineOut.chunk?.type}"\nchunk.timestamp: ${pipelineOut.chunk?.timestamp} µs\nchunk.data:      ${pipelineOut.chunk?.dataSize} bytes\n\n// 硬件解码器输出 → ⑦ VideoFrame`);
+            setStepDone('frame',
+              [`VideoFrame ← ⑥ output 回调`, `timestamp 继承自 ⑤: ${frame.timestamp} µs`],
+              [`VideoFrame { ${frame.displayWidth}×${frame.displayHeight}, ${frame.format} }`, `timestamp: ${frame.timestamp}`, `GPU 显存中的 YUV 像素`],
+              `{\n  timestamp:      ${frame.timestamp} µs  // = ⑤ chunk.timestamp\n  displayWidth:   ${frame.displayWidth}\n  displayHeight:  ${frame.displayHeight}\n  codedWidth:     ${frame.codedWidth}\n  codedHeight:    ${frame.codedHeight}\n  format:         "${frame.format}"\n}\n\n// 像素在 GPU，等待 ⑧ drawImage`);
+            pipelineOut.frame = { timestamp: frame.timestamp, w: frame.displayWidth, h: frame.displayHeight, format: frame.format };
+            addEvent('ok', `首帧解码 ${frame.displayWidth}×${frame.displayHeight} ${frame.format}`);
+          } else if (framesDecoded % 60 === 0) {
+            setStep('frame', 'done', `累计输出 ${framesDecoded} 帧 · 最新 ts=${frame.timestamp} µs · ${frame.format}`);
+          }
+
+          if (!playbackAnchor) playbackAnchor = { ts: frame.timestamp, wall: performance.now() };
+          scheduledFrames.push({ frame, showAt: playbackAnchor.wall + (frame.timestamp - playbackAnchor.ts) / 1000 });
+          scheduledFrames.sort((a, b) => a.showAt - b.showAt);
+          scheduleDraw();
+        },
+        error(err) {
+          setStep('decode', 'error', err.message);
+          addEvent('err', 'VideoDecoder: ' + err.message);
+        },
+      });
+    }
+
+    function setupMp4box(token) {
+      const mp4 = MP4Box.createFile();
+      mp4.onError = e => { setStep('demux', 'error', String(e)); addEvent('err', 'MP4Box error'); };
+
+      mp4.onReady = info => {
+        if (token !== loadToken) return;
+        const track = info.videoTracks?.[0];
+        if (!track) { setStep('demux', 'error', '无视频轨'); return; }
+        if (!track.codec.startsWith('avc1') && !track.codec.startsWith('avc3')) {
+          setStep('demux', 'error', '不支持 codec: ' + track.codec); return;
+        }
+        mp4State.track = track;
+        const codecHex = track.codec.replace(/^avc[13]\./, '');
+        const demuxNote = currentFormat === 'mp4'
+          ? '// mp4box.onReady — MP4 Box 解封装'
+          : currentFormat === 'm3u8'
+            ? '// mp4box.onReady — M3U8→TS→fMP4 汇合后解封装'
+            : '// mp4box.onReady — TS→fMP4 汇合后解封装';
+
+        setStepDone('demux',
+          currentFormat === 'mp4'
+            ? [`ArrayBuffer[${pipelineOut.read?.byteLength}] ← ①`, `ftyp: "${pipelineOut.read?.ftyp}" ← ①`]
+            : currentFormat === 'm3u8'
+              ? [`M3U8 文本 ← ①`, `segments[${pipelineOut.demux?.segCount}]`, `TS × ${pipelineOut.demux?.tsCount}`]
+              : [`TS buffer ← ①`],
+          [`track.codec: "${track.codec}"`, `${track.video.width}×${track.video.height}`, `nb_samples: ${track.nb_samples}`, `timescale: ${track.timescale}`],
+          `${demuxNote}\n\ninfo.duration: ${info.duration?.toFixed(3)} s\n\ntrack.codec: "${track.codec}"\ntrack.nb_samples: ${track.nb_samples}\ntrack.width×height: ${track.video.width}×${track.video.height}`);
+        pipelineOut.demux = { track, codec: track.codec, width: track.video.width, height: track.video.height, nb_samples: track.nb_samples };
+        addEvent('ok', `Demux ${track.codec} ${track.video.width}×${track.video.height}`);
+
+        setTimeout(() => finishAvccAndConfigure(mp4, track, token, codecHex), 400);
+      };
+
+      mp4.onSamples = (_id, _ref, samples) => handleSamples(samples, token);
+      return mp4;
+    }
+
+    function finishAvccAndConfigure(mp4, track, token, codecHex) {
+      if (token !== loadToken) return;
+      setStep('avcc', 'active', currentFormat === 'mp4' ? '读取 moov → stsd → avcC …' : '从 fMP4 init segment 提取 avcC …');
+      const { bytes: desc, avcC } = getAvcDescription(track, mp4);
+      if (!desc) { setStep('avcc', 'error', 'avcC 未找到'); return; }
+      const sps = avcC.SPS || [], pps = avcC.PPS || [];
+      const sps0 = sps[0] ? toUint8Array(sps[0]) : null;
+      const pps0 = pps[0] ? toUint8Array(pps[0]) : null;
+      const srcNote = currentFormat === 'mp4' ? 'MP4 stsd → avcC' : `TS transmux → fMP4 init → avcC (${currentFormat.toUpperCase()} 路径)`;
+
+      setStepDone('avcc',
+        [`track (codec=${track.codec}) ← ②`, `mp4 文件对象 ← ②`, currentFormat !== 'mp4' ? `fMP4 init segment ← 本步 transmux` : `moov → stsd ← ②`],
+        [`description: Uint8Array[${desc.byteLength}]`, `SPS × ${sps.length}, PPS × ${pps.length}`, `profile: ${profileName(avcC.AVCProfileIndication)}`, `level: ${avcC.AVCLevelIndication / 10}`],
+        `// ${srcNote}\n\n${explainAvcCBytes(avcC, desc, sps0, pps0, track)}`);
+      pipelineOut.avcc = { description: desc, byteLength: desc.byteLength, codec: track.codec };
+      addEvent('ok', `avcC ${desc.byteLength}B · ${profileName(avcC.AVCProfileIndication)}`);
+
+      setTimeout(() => {
+        if (token !== loadToken) return;
+        const cfg = { codec: track.codec, description: desc, codedWidth: track.video.width, codedHeight: track.video.height };
+        setStep('config', 'active', 'VideoDecoder.configure({ … })');
+        decoder.configure(cfg);
+        setStepDone('config',
+          [`codec: "${track.codec}" ← ②`, `description[${desc.byteLength}] ← ③`, `codedWidth/Height ← ② (${track.video.width}×${track.video.height})`],
+          [`decoder.state: "${decoder.state}"`, '硬件解码器已就绪', '可以 decode()'],
+          `decoder.configure({\n  codec: "${cfg.codec}",\n  codedWidth: ${cfg.codedWidth},\n  codedHeight: ${cfg.codedHeight},\n  description: Uint8Array[${desc.byteLength}]  // 来自 ③\n});\n\n// ②③ 的输出在此汇合\n// 下一步 ⑤ 需要: 已 configure 的 decoder + ② 的 samples`);
+        pipelineOut.config = { codec: track.codec, state: decoder.state };
+        addEvent('ok', `configure ${track.codec}`);
+        setStep('chunk', 'active', 'mp4.start() → 等待 onSamples …');
+        mp4.setExtractionOptions(track.id, null, { nbSamples: Infinity });
+        mp4.start();
+      }, 400);
+    }
+
+    function handleSamples(samples, token) {
+      if (token !== loadToken || decoder.state === 'closed') return;
+      const track = mp4State.track;
+
+      if (!firstSampleRef) {
+        firstSampleRef = samples[0];
+        const nals = analyzeNals(samples[0].data);
+        const ts = Math.round((samples[0].cts * 1_000_000) / samples[0].timescale);
+        const dur = samples[0].duration ? Math.round((samples[0].duration * 1_000_000) / samples[0].timescale) : 0;
+        setStepDone('chunk',
+          [`sample.data ← ② (mp4box.onSamples)`, `sample.is_sync / cts / timescale ← ②`, `decoder (configured) ← ④`],
+          [`EncodedVideoChunk { type, timestamp, data }`, `type: "${samples[0].is_sync ? 'key' : 'delta'}"`, `timestamp: ${ts} µs`, `data: ${samples[0].data.byteLength} bytes`],
+          `// 首个 sample → EncodedVideoChunk\n\nsample.is_sync:   ${samples[0].is_sync}\nsample.cts:       ${samples[0].cts} ticks (timescale=${samples[0].timescale})\nsample.size:      ${samples[0].data.byteLength} bytes\n\nnew EncodedVideoChunk({\n  type: "${samples[0].is_sync ? 'key' : 'delta'}",\n  timestamp: ${ts},\n  duration: ${dur},\n  data: Uint8Array[${samples[0].data.byteLength}]\n});\n\n${hexDump(samples[0].data, 64)}\n\nNAL:\n${nals.map((n, i) => `  ${i + 1}. ${n.name} len=${n.length}`).join('\n')}`);
+        pipelineOut.chunk = { type: samples[0].is_sync ? 'key' : 'delta', timestamp: ts, dataSize: samples[0].data.byteLength };
+      }
+
+      setStep('decode', 'active', `decoder.decode() × ${samples.length} … 累计 ${samplesFed} → ${samplesFed + samples.length}`);
+
+      for (const sample of samples) {
+        if (sample.is_sync) mp4State.keyCount++; else mp4State.deltaCount++;
+        decoder.decode(new EncodedVideoChunk({
+          type: sample.is_sync ? 'key' : 'delta',
+          timestamp: Math.round((sample.cts * 1_000_000) / sample.timescale),
+          duration: sample.duration ? Math.round((sample.duration * 1_000_000) / sample.timescale) : undefined,
+          data: sample.data,
+        }));
+        samplesFed++;
+        statSamples.textContent = samplesFed;
+      }
+
+      if (samplesFed === samples.length) addEvent('ok', `首批 ${samples.length} chunks`);
+
+      clearTimeout(mp4State.flushTimer);
+      mp4State.flushTimer = setTimeout(() => {
+        decoder.flush().then(() => {
+          if (token !== loadToken) return;
+          statTime.textContent = elapsed();
+          const size = sourceFileMeta?.size || 1;
+          setStep('chunk', 'done', (stepEls.chunk.querySelector('.step-data').textContent || '') + `\n\n// ── 完成 ──\n格式: ${currentFormat.toUpperCase()}\n总计: ${samplesFed} chunks (key:${mp4State.keyCount} delta:${mp4State.deltaCount})`);
+          globalStatus.textContent = `[${currentFormat.toUpperCase()}] ${samplesFed} samples · ${framesDecoded} 帧 · ${elapsed()}`;
+          addEvent('ok', `Pipeline 完成 ${framesDecoded} 帧`);
+        });
+      }, 0);
+    }
+
+    function appendToMp4box(mp4, data, fileStart) {
+      const u8 = toUint8Array(data);
+      const ab = (u8.byteOffset === 0 && u8.byteLength === u8.buffer.byteLength)
+        ? u8.buffer : u8.slice().buffer;
+      ab.fileStart = fileStart;
+      mp4.appendBuffer(ab);
+    }
+
+    async function feedMp4Buffer(mp4, buffer, token) {
+      setStep('demux', 'active', 'MP4Box.appendBuffer() → 解析 Box 树 …');
+      appendToMp4box(mp4, buffer, 0);
+      mp4.flush();
+    }
+
+    async function feedFragmentedMp4(mp4, initSegment, fragments, token) {
+      setStep('demux', 'active', '喂入 fMP4 init + media fragments …');
+      let offset = 0;
+      appendToMp4box(mp4, initSegment, offset);
+      offset += initSegment.byteLength;
+      for (const frag of fragments) {
+        appendToMp4box(mp4, frag, offset);
+        offset += frag.byteLength;
+      }
+      mp4.flush();
+    }
+
+    async function runMp4Pipeline(file, token) {
+      sourceFileMeta = file;
+      setStep('read', 'active', 'file.arrayBuffer() …');
+      const buffer = await file.arrayBuffer();
+      if (token !== loadToken) return;
+      const boxes = parseTopBoxes(buffer);
+      const ftyp = parseFtyp(buffer);
+      setStepDone('read',
+        [`File 对象: "${file.name}"`, `size: ${file.size} bytes`, 'MIME: video/mp4'],
+        [`ArrayBuffer[${buffer.byteLength}]`, `ftyp.major_brand: "${ftyp?.major}"`, `顶层 Box: ${boxes.map(b => b.type).join(', ')}`],
+        `Hex (前 64B):\n${hexDump(buffer, 64)}\n\nBox 列表:\n${boxes.map(b => `  ${b.type} size=${b.size}`).join('\n')}`);
+      pipelineOut.read = { byteLength: buffer.byteLength, ftyp: ftyp?.major, name: file.name };
+      addEvent('ok', `MP4 读取 ${(file.size / 1048576).toFixed(2)} MB`);
+      await delay(400);
+      if (token !== loadToken) return;
+      const mp4 = setupMp4box(token);
+      await feedMp4Buffer(mp4, buffer, token);
+    }
+
+    async function transmuxAndFeed(mp4, tsBuffers, token, step2DoneText, loadedNames = []) {
+      if (step2DoneText) setStep('demux', 'done', step2DoneText);
+      await delay(step2DoneText ? 300 : 0);
+      if (token !== loadToken) return;
+
+      setStep('avcc', 'active', `mux.js Transmuxer → ${tsBuffers.length} 个 TS 分片 …`);
+      const tsInfo = analyzeTsHeader(tsBuffers[0]);
+      const { initSegment, fragments } = await transmuxTsBuffers(tsBuffers);
+      if (token !== loadToken) return;
+
+      pipelineOut.demux.tsCount = tsBuffers.length;
+      pipelineOut.demux.tsTotalBytes = tsBuffers.reduce((s, b) => s + b.byteLength, 0);
+
+      setStepDone('avcc',
+        [`TS ArrayBuffer × ${tsBuffers.length}`, ...loadedNames.slice(0, 3).map(n => `分片: ${n}`)],
+        [`fMP4 init[${initSegment.byteLength}]`, `fMP4 fragments: ${fragments.length} 个`, '→ mp4box ② demux'],
+        `TS 分片数: ${tsBuffers.length}\nTS 同步: 0x${tsInfo.syncByte.toString(16)} (${tsInfo.syncPacketsIn10}/10)\n\nfMP4 init: ${initSegment.byteLength} bytes\nfragments: ${fragments.length}\n\n${hexDump(initSegment, 48)}${loadedNames.length ? '\n\n已加载:\n' + loadedNames.map((n, i) => `  ${i + 1}. ${n} (${tsBuffers[i].byteLength}B)`).join('\n') : ''}`);
+      addEvent('ok', `Transmux ${tsBuffers.length} TS → fMP4 (${fragments.length} frags)`);
+
+      await delay(400);
+      if (token !== loadToken) return;
+      await feedFragmentedMp4(mp4, initSegment, fragments, token);
+    }
+
+    async function runM3u8Pipeline(m3u8File, allFiles, token) {
+      sourceFileMeta = m3u8File;
+      const fileMap = buildFileMap(allFiles);
+
+      setStep('read', 'active', 'file.text() …');
+      let text = await m3u8File.text();
+      if (token !== loadToken) return;
+
+      setStepDone('read',
+        [`File: "${m3u8File.name}"`, `size: ${m3u8File.size} bytes`, '格式: 纯文本 M3U8'],
+        [`string (M3U8 文本)`, `行数: ${text.split(/\r?\n/).length}`, '含 #EXTM3U / #EXTINF 标签'],
+        text.split(/\r?\n/).slice(0, 20).map((l, i) => `${String(i + 1).padStart(2)}| ${l}`).join('\n'));
+      pipelineOut.read = { textLength: text.length, name: m3u8File.name };
+      addEvent('ok', 'M3U8 文本读取完成');
+      await delay(400);
+      if (token !== loadToken) return;
+
+      setStep('demux', 'active', '解析 #EXT-X-* 标签 …');
+      let playlist = parseM3u8(text);
+
+      if (playlist.isMaster && playlist.variants.length) {
+        const v = playlist.variants[0];
+        addEvent('run', 'Master Playlist → 使用首个变体: ' + v.uri);
+        const resolved = resolveSegmentUri(v.uri, m3u8File.name, fileMap);
+        if (resolved.type === 'file') {
+          text = await resolved.file.text();
+          playlist = parseM3u8(text);
+        } else if (resolved.type === 'url') {
+          text = await (await fetch(resolved.url)).text();
+          playlist = parseM3u8(text);
+        } else {
+          setStep('demux', 'error', 'Master Playlist：请同时选中子 m3u8 文件');
+          return;
+        }
+      }
+
+      if (!playlist.segments.length) {
+        setStep('demux', 'error', '未找到 #EXTINF 分片'); return;
+      }
+
+      const segPreview = playlist.segments.slice(0, 5).map((s, i) =>
+        `  [${i}] dur=${s.duration}s  uri="${s.uri}"`).join('\n');
+
+      setStepDone('demux',
+        [`M3U8 文本 ← ① (${pipelineOut.read?.textLength} chars)`],
+        [`segments[${playlist.segments.length}]`, `targetDuration: ${playlist.targetDuration}s`, `version: ${playlist.version}`, ...playlist.segments.slice(0, 3).map((s, i) => `seg[${i}]: "${s.uri}" ${s.duration}s`)],
+        `#EXT-X-VERSION: ${playlist.version}\n#EXT-X-TARGETDURATION: ${playlist.targetDuration}\n分片总数: ${playlist.segments.length}\n\n${segPreview}`);
+      pipelineOut.demux = { segCount: playlist.segments.length, segments: playlist.segments };
+      addEvent('ok', `M3U8 解析 ${playlist.segments.length} 分片`);
+
+      setStep('avcc', 'active', '加载 TS 分片 …');
+      const tsBuffers = [];
+      const loadedNames = [];
+      for (const seg of playlist.segments) {
+        const resolved = resolveSegmentUri(seg.uri, m3u8File.name, fileMap);
+        setStep('avcc', 'active', `加载分片 ${loadedNames.length + 1}/${playlist.segments.length}: ${resolved.name || resolved.uri} …`);
+        tsBuffers.push(await loadSegmentBuffer(resolved));
+        loadedNames.push(resolved.name || resolved.uri);
+        if (token !== loadToken) return;
+      }
+
+      const mp4 = setupMp4box(token);
+      await transmuxAndFeed(mp4, tsBuffers, token, null, loadedNames);
+    }
+
+    async function runTsPipeline(tsFiles, token) {
+      sourceFileMeta = tsFiles[0];
+      const buffers = [];
+      for (const f of tsFiles) buffers.push(await f.arrayBuffer());
+      if (token !== loadToken) return;
+
+      const tsInfo = analyzeTsHeader(buffers[0]);
+      setStepDone('read',
+        tsFiles.map(f => `File: "${f.name}" (${f.size}B)`),
+        [`TS ArrayBuffer[${buffers[0].byteLength}]`, `sync: 0x${tsInfo.syncByte.toString(16)}`, `0x47 匹配: ${tsInfo.syncPacketsIn10}/10`],
+        `分片数: ${tsFiles.length}\n总字节: ${buffers.reduce((s, b) => s + b.byteLength, 0)}\n\n${hexDump(buffers[0], 64)}`);
+      pipelineOut.read = { byteLength: buffers[0].byteLength, tsCount: tsFiles.length };
+      addEvent('ok', `TS 读取 ${tsFiles.length} 文件`);
+
+      await delay(400);
+      if (token !== loadToken) return;
+
+      setStepDone('demux',
+        [`TS ArrayBuffer[${pipelineOut.read?.byteLength}] ← ①`, `${tsFiles.length} 个 .ts 文件`],
+        [`TS 包流 (188B/packet, sync=0x47)`, '→ 交给 ③ mux.js transmux'],
+        `分片文件:\n${tsFiles.map((f, i) => `  ${i + 1}. ${f.name} (${buffers[i].byteLength} bytes)`).join('\n')}\n\n// TS 与 M3U8 区别: 跳过 playlist，直接 transmux`);
+      pipelineOut.demux = { tsCount: tsFiles.length };
+
+      const mp4 = setupMp4box(token);
+      await transmuxAndFeed(mp4, buffers, token, null, tsFiles.map(f => f.name));
+    }
+
+    async function runAutoPipeline(files) {
+      const format = detectFormat(files);
+      applyFormatPatch(format);
+      const token = ++loadToken;
+      resetAll();
+      applyFormatPatch(format);
+      t0 = performance.now();
+      createDecoder();
+      globalStatus.textContent = `检测为 ${format.toUpperCase()} · 处理中…`;
+      addEvent('run', `格式=${format.toUpperCase()} · ${files.length} 个文件`);
+
+      try {
+        if (format === 'm3u8') {
+          const m3u8 = [...files].find(f => /\.m3u8$/i.test(f.name));
+          await runM3u8Pipeline(m3u8, files, token);
+        } else if (format === 'ts') {
+          await runTsPipeline([...files].filter(f => /\.ts$/i.test(f.name) || f.type === 'video/mp2t'), token);
+        } else {
+          await runMp4Pipeline(files[0], token);
+        }
+      } catch (e) {
+        addEvent('err', e.message);
+        globalStatus.textContent = '失败: ' + e.message;
+        const active = Object.values(stepEls).find(el => el.classList.contains('active'));
+        if (active) setStep(active.dataset.step, 'error', e.message);
+        else setStep('read', 'error', e.message);
+        console.error(e);
+      }
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    buildPipeline();
+    fileInput.addEventListener('change', () => {
+      const files = fileInput.files;
+      if (files?.length) runAutoPipeline(files);
+    });
+  </script>
+</body>
+</html>
