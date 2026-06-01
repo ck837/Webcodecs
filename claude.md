@@ -90,6 +90,7 @@ dj/                          ← 仓库根
 |------|------|
 | `webcodecs/` | 浏览器 WebCodecs 硬解码、解封装、管线可视化 |
 | `diffusion/` | 扩散模型概念讲解（零公式、物理比喻） |
+| `langgraph/` | LangGraph Agent 有向图拓扑 + Canvas 可视化 |
 | `drone-gyro/` | 无人机陀螺仪 WebSocket 模拟广播 |
 
 详细 Demo 索引见各主题下的 `总览.md`。

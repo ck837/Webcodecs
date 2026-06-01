@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LangGraph Agent 拓扑 · Canvas 可视化</title>
+  <style>
+    :root {
+      --bg:#07080f; --panel:#12141f; --border:#2a2d3e;
+      --text:#eceff4; --muted:#8b90a8; --accent:#58a6ff;
+      --pink:#ff79c6; --green:#3fb950; --warm:#ffb86c;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font:14px/1.6 "Segoe UI","PingFang SC",sans-serif; min-height:100vh; }
+    header { padding:20px 24px; border-bottom:1px solid var(--border); }
+    header h1 { font-size:20px; margin-bottom:6px; }
+    header p { color:var(--muted); font-size:13px; max-width:720px; }
+    .layout { display:grid; grid-template-columns:1fr 280px; gap:0; min-height:calc(100vh - 90px); }
+    @media(max-width:860px){ .layout{ grid-template-columns:1fr; } }
+    #wrap { position:relative; background:#000; }
+    canvas { display:block; width:100%; height:100%; min-height:420px; }
+    aside { border-left:1px solid var(--border); background:var(--panel); padding:16px; overflow-y:auto; }
+    aside h2 { font-size:11px; color:var(--muted); letter-spacing:.1em; margin-bottom:12px; }
+    .node-card { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:12px; }
+    .node-card.active { border-color:var(--accent); box-shadow:0 0 12px rgba(88,166,255,.2); }
+    .node-card .id { color:var(--accent); font-weight:600; }
+    .node-card .sub { color:var(--muted); margin-top:4px; }
+    #log { font-family:Consolas,monospace; font-size:11px; color:var(--warm); margin-top:16px; max-height:200px; overflow-y:auto; }
+    #log div { margin-bottom:4px; }
+    .bar { display:flex; gap:8px; padding:12px 24px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    .bar button { background:rgba(88,166,255,.12); border:1px solid var(--accent); color:var(--accent); padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+    .bar button:hover { background:rgba(88,166,255,.22); }
+    .hint { padding:8px 24px; font-size:12px; color:var(--muted); }
+    .hint code { color:var(--pink); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LangGraph · Agent 逻辑拓扑可视化</h1>
+    <p>节点 = AI 动作，边 = 路由。粉色回流边 = 条件循环（发现 Bug → 重回 generator）。发光粒子模拟数据/能量在图中的流转。</p>
+  </header>
+  <div class="bar">
+    <button id="btnRun">▶ 模拟运行</button>
+    <button id="btnReset">↺ 重置</button>
+  </div>
+  <p class="hint">数据来自 <code>output/topology.json</code> — 先运行 <code>python visual_agent.py</code></p>
+  <div class="layout">
+    <div id="wrap"><canvas id="c"></canvas></div>
+    <aside>
+      <h2>NODES</h2>
+      <div id="nodeList"></div>
+      <h2 style="margin-top:16px">TRACE</h2>
+      <div id="log"></div>
+    </aside>
+  </div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const nodeListEl = document.getElementById('nodeList');
+const logEl = document.getElementById('log');
+
+let topo = null;
+let layout = {};
+let particle = { t: 0, edge: null, path: [] };
+let activeNode = null;
+let running = false;
+
+// 手动布局（与 LangGraph 拓扑一致）
+const POSITIONS = {
+  __start__: { x: 0.12, y: 0.5 },
+  generator: { x: 0.38, y: 0.5 },
+  evaluator: { x: 0.62, y: 0.5 },
+  __end__:   { x: 0.88, y: 0.5 },
+};
+
+async function loadTopo() {
+  try {
+    const res = await fetch('output/topology.json');
+    topo = await res.json();
+  } catch {
+    topo = {
+      title: 'Demo (内置)',
+      nodes: [
+        { id: '__start__', label: 'START', color: '#8b949e', icon: '▶' },
+        { id: 'generator', label: '生成代码', color: '#58a6ff', icon: '⚡' },
+        { id: 'evaluator', label: '排查 Bug', color: '#d29922', icon: '🔍' },
+        { id: '__end__', label: 'END', color: '#3fb950', icon: '✓' },
+      ],
+      edges: [
+        { from: '__start__', to: 'generator', color: '#58a6ff' },
+        { from: 'generator', to: 'evaluator', color: '#58a6ff' },
+        { from: 'evaluator', to: 'generator', conditional: true, label: 'continue', color: '#ff79c6' },
+        { from: 'evaluator', to: '__end__', conditional: true, label: 'exit', color: '#3fb950' },
+      ],
+    };
+  }
+  buildSidebar();
+  resize();
+}
+
+function buildSidebar() {
+  nodeListEl.innerHTML = topo.nodes.map(n => `
+    <div class="node-card" data-id="${n.id}">
+      <div class="id">${n.icon || '●'} ${n.label || n.id}</div>
+      <div class="sub">${n.id}</div>
+    </div>`).join('');
+}
+
+function resize() {
+  const wrap = document.getElementById('wrap');
+  const dpr = devicePixelRatio || 1;
+  canvas.width = wrap.clientWidth * dpr;
+  canvas.height = Math.max(420, wrap.clientHeight) * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  for (const [id, p] of Object.entries(POSITIONS)) {
+    layout[id] = { x: p.x * (canvas.width / dpr), y: p.y * (canvas.height / dpr) };
+  }
+  draw(0);
+}
+
+function getEdgePoints(from, to, curved = false) {
+  const a = layout[from], b = layout[to];
+  if (!a || !b) return null;
+  if (curved) {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 80;
+    return { a, b, ctrl: { x: mx, y: my }, curved: true };
+  }
+  return { a, b, curved: false };
+}
+
+function drawEdge(ep, color, label, dash) {
+  if (!ep) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = ep.curved ? 2.5 : 2;
+  if (dash) ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(ep.a.x, ep.a.y);
+  if (ep.curved) ctx.quadraticCurveTo(ep.ctrl.x, ep.ctrl.y, ep.b.x, ep.b.y);
+  else ctx.lineTo(ep.b.x, ep.b.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const ang = ep.curved
+    ? Math.atan2(ep.b.y - ep.ctrl.y, ep.b.x - ep.ctrl.x)
+    : Math.atan2(ep.b.y - ep.a.y, ep.b.x - ep.a.x);
+  const hx = ep.b.x - Math.cos(ang) * 18, hy = ep.b.y - Math.sin(ang) * 18;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(ep.b.x, ep.b.y);
+  ctx.lineTo(hx - 7 * Math.sin(ang), hy + 7 * Math.cos(ang));
+  ctx.lineTo(hx + 7 * Math.sin(ang), hy - 7 * Math.cos(ang));
+  ctx.fill();
+
+  if (label) {
+    const lx = ep.curved ? ep.ctrl.x : (ep.a.x + ep.b.x) / 2;
+    const ly = ep.curved ? ep.ctrl.y - 12 : (ep.a.y + ep.b.y) / 2 - 14;
+    ctx.fillStyle = color;
+    ctx.font = '11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, lx, ly);
+  }
+  ctx.restore();
+}
+
+function drawNode(nid, meta, glow) {
+  const p = layout[nid];
+  if (!p) return;
+  const r = 36;
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = meta.color;
+    ctx.shadowBlur = 24;
+  }
+  ctx.fillStyle = '#161b22';
+  ctx.strokeStyle = meta.color;
+  ctx.lineWidth = glow ? 3 : 2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = meta.color;
+  ctx.font = 'bold 18px system-ui';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(meta.icon || '●', p.x, p.y - 6);
+  ctx.fillStyle = '#eceff4';
+  ctx.font = '11px system-ui';
+  ctx.fillText(meta.label || nid, p.x, p.y + 22);
+  ctx.restore();
+}
+
+function drawParticle(ep, t) {
+  if (!ep) return;
+  let x, y;
+  if (ep.curved) {
+    const u = 1 - t;
+    x = u*u*ep.a.x + 2*u*t*ep.ctrl.x + t*t*ep.b.x;
+    y = u*u*ep.a.y + 2*u*t*ep.ctrl.y + t*t*ep.b.y;
+  } else {
+    x = ep.a.x + (ep.b.x - ep.a.x) * t;
+    y = ep.a.y + (ep.b.y - ep.a.y) * t;
+  }
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 14);
+  g.addColorStop(0, '#fff');
+  g.addColorStop(0.4, '#58a6ff');
+  g.addColorStop(1, 'transparent');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, 14, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function draw() {
+  const W = canvas.width / (devicePixelRatio || 1);
+  const H = canvas.height / (devicePixelRatio || 1);
+  ctx.fillStyle = '#07080f';
+  ctx.fillRect(0, 0, W, H);
+
+  const nodeMap = Object.fromEntries(topo.nodes.map(n => [n.id, n]));
+
+  for (const e of topo.edges) {
+    const curved = e.from === 'evaluator' && e.to === 'generator';
+    drawEdge(getEdgePoints(e.from, e.to, curved), e.color || '#58a6ff', e.label || '', false);
+  }
+
+  for (const n of topo.nodes) {
+    drawNode(n.id, n, activeNode === n.id);
+  }
+
+  if (particle.edge && particle.t >= 0) {
+    const e = particle.edge;
+    const curved = e.from === 'evaluator' && e.to === 'generator';
+    drawParticle(getEdgePoints(e.from, e.to, curved), particle.t);
+  }
+}
+
+function setActive(nid) {
+  activeNode = nid;
+  document.querySelectorAll('.node-card').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === nid);
+  });
+}
+
+function log(msg) {
+  const d = document.createElement('div');
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  logEl.prepend(d);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function animateEdge(edge, ms = 900) {
+  particle.edge = edge;
+  const t0 = performance.now();
+  return new Promise(resolve => {
+    function frame(now) {
+      particle.t = Math.min(1, (now - t0) / ms);
+      draw();
+      if (particle.t < 1) requestAnimationFrame(frame);
+      else { particle.t = 0; resolve(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+async function simulateRun() {
+  if (running) return;
+  running = true;
+  logEl.innerHTML = '';
+  log('START → 模拟 Agent 3 轮循环后 exit');
+
+  const path = [
+    { edge: { from: '__start__', to: 'generator' }, node: 'generator', msg: 'generator: 生成代码' },
+    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 排查 Bug' },
+    { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 回流 (Bug)' },
+    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 再查' },
+    { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 再回流' },
+    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 通过' },
+    { edge: { from: 'evaluator', to: '__end__' }, node: '__end__', msg: 'exit → END' },
+  ];
+
+  for (const step of path) {
+    setActive(step.node);
+    log(step.msg);
+    await animateEdge(step.edge, step.edge.conditional ? 1100 : 800);
+    await sleep(200);
+  }
+  running = false;
+  log('完成');
+}
+
+document.getElementById('btnRun').onclick = simulateRun;
+document.getElementById('btnReset').onclick = () => {
+  activeNode = null;
+  particle = { t: 0, edge: null };
+  logEl.innerHTML = '';
+  draw();
+  document.querySelectorAll('.node-card').forEach(el => el.classList.remove('active'));
+};
+
+window.addEventListener('resize', resize);
+loadTopo();
+</script>
+</body>
+</html>

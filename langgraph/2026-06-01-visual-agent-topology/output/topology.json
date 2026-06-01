@@ -1,0 +1,56 @@
+{
+  "title": "LangGraph Agent 拓扑 — 生成 ↔ 检查 ↔ 循环",
+  "nodes": [
+    {
+      "id": "__start__",
+      "label": "START",
+      "color": "#8b949e",
+      "icon": "▶"
+    },
+    {
+      "id": "generator",
+      "label": "生成代码",
+      "color": "#58a6ff",
+      "icon": "⚡"
+    },
+    {
+      "id": "evaluator",
+      "label": "排查 Bug",
+      "color": "#d29922",
+      "icon": "🔍"
+    },
+    {
+      "id": "__end__",
+      "label": "END",
+      "color": "#3fb950",
+      "icon": "✓"
+    }
+  ],
+  "edges": [
+    {
+      "from": "__start__",
+      "to": "generator",
+      "color": "#58a6ff"
+    },
+    {
+      "from": "evaluator",
+      "to": "__end__",
+      "conditional": true,
+      "label": "exit (通过)",
+      "color": "#3fb950"
+    },
+    {
+      "from": "evaluator",
+      "to": "generator",
+      "conditional": true,
+      "label": "continue (有 Bug)",
+      "color": "#ff79c6"
+    },
+    {
+      "from": "generator",
+      "to": "evaluator",
+      "color": "#58a6ff"
+    }
+  ],
+  "description": "条件边 evaluator→generator 是可视化核心：能量回流 = 反思重试"
+}
