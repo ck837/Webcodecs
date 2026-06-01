@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>扩散模型 · 用物理直觉看懂 AI 画画</title>
+  <style>
+    :root {
+      --bg: #07080f; --panel: #12141f; --border: #2a2d3e;
+      --text: #eceff4; --muted: #8b90a8; --accent: #7eb8ff;
+      --warm: #ffb86c; --pink: #ff79c6; --green: #50fa7b; --purple: #bd93f9;
+      --ink: #1a1a2e;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text);
+      font: 16px/1.7 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    /* ── 导航 ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+      display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+      background: rgba(7,8,15,.88); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border); overflow-x: auto;
+    }
+    nav a {
+      color: var(--muted); text-decoration: none; font-size: 12px;
+      padding: 5px 12px; border-radius: 999px; white-space: nowrap;
+      border: 1px solid transparent; transition: .2s;
+    }
+    nav a:hover, nav a.on { color: var(--accent); border-color: var(--accent); background: rgba(126,184,255,.08); }
+
+    /* ── 章节 ── */
+    section {
+      min-height: 100vh; padding: 80px 24px 60px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+    }
+    section::before {
+      content: attr(data-chapter);
+      position: absolute; top: 72px; left: 24px;
+      font-size: 11px; letter-spacing: .14em; color: var(--accent); opacity: .7;
+    }
+    .inner { max-width: 960px; width: 100%; }
+
+    h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.15; margin-bottom: 16px; }
+    h2 { font-size: clamp(24px, 3.5vw, 36px); line-height: 1.25; margin-bottom: 14px; }
+    .lead { font-size: clamp(16px, 2vw, 20px); color: var(--muted); max-width: 680px; margin-bottom: 28px; }
+    p { color: var(--muted); margin-bottom: 12px; }
+    p strong, li strong { color: var(--text); }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+    .tag {
+      font-size: 12px; padding: 5px 14px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted);
+    }
+
+    /* ── Canvas 演示区 ── */
+    .demo-box {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 16px; overflow: hidden; margin: 24px 0;
+    }
+    .demo-head {
+      padding: 12px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    }
+    .demo-head span { font-size: 13px; color: var(--muted); }
+    .demo-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    .demo-controls button {
+      background: rgba(126,184,255,.12); border: 1px solid var(--accent);
+      color: var(--accent); padding: 6px 14px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; transition: .2s;
+    }
+    .demo-controls button:hover { background: rgba(126,184,255,.22); }
+    .demo-controls button.active { background: var(--accent); color: var(--bg); }
+    canvas.demo-canvas {
+      display: block; width: 100%; height: auto; background: #000;
+    }
+    .demo-caption {
+      padding: 14px 18px; font-size: 14px; color: var(--muted);
+      border-top: 1px solid var(--border); line-height: 1.65;
+    }
+    .demo-caption em { color: var(--warm); font-style: normal; }
+
+    /* ── 时间轴 ── */
+    .timeline {
+      display: flex; align-items: stretch; gap: 0; margin: 28px 0;
+      overflow-x: auto; padding-bottom: 8px;
+    }
+    .tl-step {
+      flex: 1; min-width: 120px; text-align: center; position: relative;
+    }
+    .tl-step:not(:last-child)::after {
+      content: '→'; position: absolute; right: -8px; top: 28px;
+      color: var(--border); font-size: 18px;
+    }
+    .tl-icon {
+      width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; border: 2px solid var(--border); background: var(--panel);
+    }
+    .tl-step.forward .tl-icon { border-color: var(--warm); box-shadow: 0 0 20px rgba(255,184,108,.15); }
+    .tl-step.reverse .tl-icon { border-color: var(--green); box-shadow: 0 0 20px rgba(80,250,123,.15); }
+    .tl-step h4 { font-size: 13px; margin-bottom: 4px; }
+    .tl-step p { font-size: 11px; color: var(--muted); padding: 0 6px; }
+
+    /* ── 三模型对比 ── */
+    .compare-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 28px 0;
+    }
+    @media (max-width: 780px) { .compare-grid { grid-template-columns: 1fr; } }
+    .compare-card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 14px; padding: 22px; position: relative; overflow: hidden;
+    }
+    .compare-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .compare-card.gan::before { background: var(--pink); }
+    .compare-card.ar::before { background: var(--warm); }
+    .compare-card.diff::before { background: var(--green); }
+    .compare-card h3 { font-size: 17px; margin-bottom: 6px; }
+    .compare-card .metaphor { font-size: 13px; color: var(--accent); margin-bottom: 12px; }
+    .compare-card ul { list-style: none; font-size: 13px; }
+    .compare-card li { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); color: var(--muted); }
+    .compare-card li:last-child { border: none; }
+
+    /* ── 比喻卡片 ── */
+    .metaphor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+    @media (max-width: 640px) { .metaphor-grid { grid-template-columns: 1fr; } }
+    .metaphor-card {
+      background: var(--panel); border-radius: 14px; padding: 22px;
+      border: 1px solid var(--border);
+    }
+    .metaphor-card .emoji { font-size: 36px; margin-bottom: 10px; }
+    .metaphor-card h3 { font-size: 16px; margin-bottom: 8px; }
+    .metaphor-card p { font-size: 14px; margin: 0; }
+
+    .quote-block {
+      border-left: 4px solid var(--purple); padding: 16px 20px;
+      background: rgba(189,147,249,.06); border-radius: 0 12px 12px 0;
+      margin: 24px 0; max-width: 720px;
+    }
+    .quote-block p { color: var(--purple); font-size: 17px; margin: 0; }
+
+    .summary-list {
+      list-style: none; max-width: 720px;
+    }
+    .summary-list li {
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+      font-size: 16px; color: var(--muted);
+    }
+    .summary-list li strong { color: var(--text); }
+
+    footer {
+      text-align: center; padding: 40px; color: var(--muted); font-size: 13px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<nav id="nav">
+  <a href="#hero">开场</a>
+  <a href="#forward">正向加噪</a>
+  <a href="#reverse">反向去噪</a>
+  <a href="#demo">互动演示</a>
+  <a href="#compare">三模型对比</a>
+  <a href="#summary">一句话</a>
+</nav>
+
+<!-- ═══ 0 开场 ═══ -->
+<section id="hero" data-chapter="PROLOGUE">
+  <div class="inner">
+    <div class="tag-row">
+      <span class="tag">零公式</span>
+      <span class="tag">物理直觉</span>
+      <span class="tag">给视觉动物的前端</span>
+    </div>
+    <h1>扩散模型：<br>一张图是怎么从「混沌」里<strong style="color:var(--accent)">长</strong>出来的？</h1>
+    <p class="lead">
+      你刚洗完澡，边打游戏边想 AI——没问题。<br>
+      忘掉所有论文里的符号。我们只聊<strong>墨水</strong>、<strong>分子</strong>、<strong>雾</strong>。
+    </p>
+    <p>Stable Diffusion、Midjourney、DALL·E 3 的底层家族，叫 <strong>扩散模型（Diffusion Model）</strong>。<br>
+    它干的事可以用一句话说：<strong>训练时把清晰画面搅成一锅汤，生成时再把汤慢慢澄清回来。</strong></p>
+  </div>
+</section>
+
+<!-- ═══ 1 正向加噪 ═══ -->
+<section id="forward" data-chapter="CHAPTER 01 · 正向加噪">
+  <div class="inner">
+    <h2>正向加噪：墨水滴进清水里</h2>
+    <p class="lead">训练阶段，AI 不学「怎么画」，先学「怎么把画弄糊」。</p>
+
+    <div class="metaphor-grid">
+      <div class="metaphor-card">
+        <div class="emoji">💧</div>
+        <h3>比喻：一滴墨入水</h3>
+        <p>你有一杯清水，杯底印着一张清晰的照片。用滴管滴一滴墨进去——墨迹开始<strong>扩散</strong>。再滴、再搅……最后整杯水变成均匀的灰黑色，照片<strong>完全看不见了</strong>。</p>
+      </div>
+      <div class="metaphor-card">
+        <div class="emoji">🌫️</div>
+        <h3>比喻：房间里的雾</h3>
+        <p>一张画挂在墙上。你打开烟雾机，第一缕雾遮住 5% 的细节；再喷，50% 轮廓没了；继续喷……整幅画被<strong>均匀的雾</strong>盖住，只剩一片灰蒙蒙，没有任何结构。</p>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-step forward">
+        <div class="tl-icon">🖼️</div>
+        <h4>第 0 步</h4>
+        <p>清晰原图<br>猫的眼睛、胡须根根分明</p>
+      </div>
+      <div class="tl-step forward">
+        <div class="tl-icon">🌁</div>
+        <h4>中间某步</h4>
+        <p>像加了高斯模糊<br>轮廓还在，细节化了</p>
+      </div>
+      <div class="tl-step forward">
+        <div class="tl-icon">📺</div>
+        <h4>再往后</h4>
+        <p>像老电视雪花<br>只剩色块影子</p>
+      </div>
+      <div class="tl-step forward">
+        <div class="tl-icon">🎲</div>
+        <h4>最后一步</h4>
+        <p>纯随机噪声<br>像调错台的雪花屏</p>
+      </div>
+    </div>
+
+    <div class="quote-block">
+      <p>正向过程 = 时间正着走：清晰 → 模糊 → 混沌。每一步只加一点点噪，像墨分子随机乱撞，最终达到「热平衡」——到处都是噪声，没有任何信息。</p>
+    </div>
+
+    <p><strong>为什么要这样折磨自己？</strong> 因为 AI 要在每一个「模糊程度」上都学会：「如果画面现在是这个糊法，再糊一点点会变成什么样。」——就像天气预报员记住「云厚了通常会继续厚」，它记住了<strong>噪声扩散的方向</strong>。</p>
+  </div>
+</section>
+
+<!-- ═══ 2 反向去噪 ═══ -->
+<section id="reverse" data-chapter="CHAPTER 02 · 反向去噪">
+  <div class="inner">
+    <h2>反向去噪：时光倒流，墨水分离</h2>
+    <p class="lead">生成阶段，AI 做一件违反直觉的事——让墨水<strong>倒着流回</strong>原处。</p>
+
+    <div class="metaphor-grid">
+      <div class="metaphor-card">
+        <div class="emoji">⏪</div>
+        <h3>比喻：倒放墨滴视频</h3>
+        <p>你把「墨入水」的视频倒着播放：均匀的灰黑色开始<strong>聚团</strong>，团块变成轮廓，轮廓变成细节，最后照片从水底<strong>浮现</strong>。扩散模型的生成，就是这个倒放过程——但倒放不是真随机，每一步都靠 AI 的「经验」指路。</p>
+      </div>
+      <div class="metaphor-card">
+        <div class="emoji">🧭</div>
+        <h3>比喻：浓雾里的向导</h3>
+        <p>你站在完全看不见的大雾里（纯噪声）。AI 是一个向导，它说：「根据我见过的几亿张图，这一步雾应该<strong>往薄了散</strong>的方向走。」你走一步，雾淡一点；再走，隐约看见猫的耳朵；再走 20 步……完整的猫出现了。</p>
+      </div>
+    </div>
+
+    <div class="timeline">
+      <div class="tl-step reverse">
+        <div class="tl-icon">🎲</div>
+        <h4>起点</h4>
+        <p>随机噪声<br>什么都没有</p>
+      </div>
+      <div class="tl-step reverse">
+        <div class="tl-icon">👻</div>
+        <h4>早期</h4>
+        <p>大色块浮现<br>「好像有个圆的东西？」</p>
+      </div>
+      <div class="tl-step reverse">
+        <div class="tl-icon">🐱</div>
+        <h4>中期</h4>
+        <p>轮廓成型<br>「是只猫！」</p>
+      </div>
+      <div class="tl-step reverse">
+        <div class="tl-icon">✨</div>
+        <h4>末期</h4>
+        <p>细节雕刻<br>胡须、瞳孔高光</p>
+      </div>
+    </div>
+
+    <div class="quote-block">
+      <p>反向过程 = 时间倒着走：混沌 → 轮廓 → 清晰。每一步 AI 预测「该去掉哪一点噪声」，像用湿棉签一点点擦去磨砂玻璃上的雾气。</p>
+    </div>
+
+    <p><strong>文字提示词（Prompt）怎么起作用？</strong> 想象向导不只带路，还戴着耳机听你说「要一只穿宇航服的猫」。每一步擦雾时，它都会把方向<strong>往「宇航服猫」那边偏</strong>——不是画完再改，而是从一开始就引导混沌往正确的形态凝聚。</p>
+  </div>
+</section>
+
+<!-- ═══ 3 互动演示 ═══ -->
+<section id="demo" data-chapter="INTERACTIVE · 亲手搅一搅">
+  <div class="inner">
+    <h2>互动：亲手搅墨、亲手擦雾</h2>
+    <p class="lead">下面是一块模拟画布。点按钮，看正向加噪和反向去噪的物理过程。</p>
+
+    <div class="demo-box">
+      <div class="demo-head">
+        <span id="demoStatus">当前：清晰原图</span>
+        <div class="demo-controls">
+          <button id="btnForward" class="active">▶ 正向加噪（墨入水）</button>
+          <button id="btnReverse">◀ 反向去噪（时光倒流）</button>
+          <button id="btnReset">↺ 重置</button>
+        </div>
+      </div>
+      <canvas class="demo-canvas" id="canvas" width="640" height="400"></canvas>
+      <div class="demo-caption" id="demoCaption">
+        <em>正向：</em>每一帧往像素里掺入随机「墨分子」，画面从有序滑向混沌——就像热力学里的分子越撞越乱，直到完全均匀。
+      </div>
+    </div>
+
+    <p style="font-size:14px">注意看：正向是<strong>单向滑坡</strong>，越滑越糊，不可逆；反向是<strong>有向导的下山</strong>，AI 在每一步选择「往清晰的方向走」，所以能从噪声里「长」出结构。</p>
+  </div>
+</section>
+
+<!-- ═══ 4 三模型对比 ═══ -->
+<section id="compare" data-chapter="CHAPTER 03 · 本质区别">
+  <div class="inner">
+    <h2>扩散 vs GAN vs 自回归：<br>三种「造物方式」</h2>
+    <p class="lead">都是生成图像，但底层逻辑像三种完全不同的物理过程。</p>
+
+    <div class="compare-grid">
+      <div class="compare-card gan">
+        <h3 style="color:var(--pink)">GAN</h3>
+        <div class="metaphor">🎭 比喻：造假者 vs 鉴定师的内卷战争</div>
+        <ul>
+          <li><strong>两个网络对打：</strong>一个拼命伪造名画，一个拼命找破绽</li>
+          <li><strong>生成方式：</strong>造假者从随机种子「一次变出」整幅画，像魔术师掀布</li>
+          <li><strong>本质：</strong>对抗博弈——骗过鉴定师就赢</li>
+          <li><strong>弱点：</strong>模式崩塌（只会画几种脸）、训练不稳定（两人打架打崩了）</li>
+          <li><strong>画面感：</strong>一锤子买卖，没有「中间过程」</li>
+        </ul>
+      </div>
+
+      <div class="compare-card ar">
+        <h3 style="color:var(--warm)">Autoregressive 自回归</h3>
+        <div class="metaphor">📝 比喻：从左到右写小说，或一笔一笔描像素</div>
+        <ul>
+          <li><strong>生成方式：</strong>先画左上角第一个像素，再根据它画第二个……像填字游戏</li>
+          <li><strong>本质：</strong>链式条件概率——每个新像素依赖前面所有像素</li>
+          <li><strong>优点：</strong>逻辑清晰，和 GPT 生成文字是同一套思路</li>
+          <li><strong>弱点：</strong>慢（必须按顺序来），全局结构容易前后矛盾</li>
+          <li><strong>画面感：</strong>像扫描仪一行行扫过去，不能先定整体再填细节</li>
+        </ul>
+      </div>
+
+      <div class="compare-card diff">
+        <h3 style="color:var(--green)">Diffusion 扩散</h3>
+        <div class="metaphor">🌊 比喻：墨水分离 / 雾中雕刻 / 时光倒流</div>
+        <ul>
+          <li><strong>生成方式：</strong>从纯噪声出发，迭代 20~50 步，每步擦掉一点雾</li>
+          <li><strong>本质：</strong>学习「噪声 → 稍微清晰一点」的物理过程</li>
+          <li><strong>优点：</strong>训练稳定、画质高、可控性强（每步都能干预）</li>
+          <li><strong>弱点：</strong>步数多，推理比 GAN 慢（但比自回归快很多）</li>
+          <li><strong>画面感：</strong>像冲印照片在显影液里慢慢浮现——有完整的「过程」</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="metaphor-grid">
+      <div class="metaphor-card">
+        <div class="emoji">🥊</div>
+        <h3>GAN = 一次出拳</h3>
+        <p>随机向量 → <strong>砰</strong> → 整张图。中间没有步骤，像拳击手出一记直拳，要么漂亮要么翻车。你没法在出拳途中喊「停，鼻子再高一点」。</p>
+      </div>
+      <div class="metaphor-card">
+        <div class="emoji">✍️</div>
+        <h3>自回归 = 逐字写</h3>
+        <p>像用打字机写图片，一个像素一个像素往外蹦。写到最后发现「左边画的是狗，右边怎么像猫」——因为<strong>后面看不到全局</strong>，只能回头看，不能回头改。</p>
+      </div>
+      <div class="metaphor-card" style="grid-column: span 2">
+        <div class="emoji">🧊</div>
+        <h3>扩散 = 从冰里雕</h3>
+        <p>先有一整块「噪声冰」，然后像米开朗基罗说的——<strong>「雕像本就在石头里，我只是把多余的部分去掉。」</strong> 每一步去掉一点随机，结构自然浮现。Prompt 就是告诉雕刻刀：「别雕大卫，雕一只猫。」</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 5 总结 ═══ -->
+<section id="summary" data-chapter="EPILOGUE">
+  <div class="inner">
+    <h2>三句话，打完这局游戏还能记住</h2>
+    <ul class="summary-list">
+      <li><strong>正向加噪</strong> — 训练时把清晰图一步步搅成均匀噪声，像墨入水、雾遮画。AI 记住「怎么从清晰变糊」。</li>
+      <li><strong>反向去噪</strong> — 生成时从噪声出发，一步步擦雾还原。AI 用学到的经验当向导，Prompt 告诉它往哪凝聚。</li>
+      <li><strong>和 GAN / 自回归的本质区别</strong> — GAN 是「一次变魔术」，自回归是「逐像素填字」，扩散是「从混沌里迭代雕刻」——有过程、可干预、训练稳。</li>
+    </ul>
+
+    <div class="quote-block" style="margin-top:32px;border-color:var(--green)">
+      <p style="color:var(--green)">你是视觉动物——记住那个画面就够了：生成一张 AI 图，就是观看一段「墨水分离、浓雾退散」的倒放影片，而导演是你输入的那句 Prompt。</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  diffusion/ · 零公式物理直觉讲解 · 边打游戏边学 AI 专用
+</footer>
+
+<script>
+(() => {
+  // ── 导航高亮 ──
+  const navLinks = document.querySelectorAll('nav a');
+  const sections = [...document.querySelectorAll('section')];
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        navLinks.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, { threshold: 0.4 });
+  sections.forEach(s => obs.observe(s));
+
+  // ── Canvas 模拟：正向加噪 / 反向去噪 ──
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const STEPS = 60;
+  let step = 0;
+  let mode = 'forward'; // forward | reverse
+  let animId = null;
+  let originalData = null;
+  let noiseLayers = [];
+
+  const captions = {
+    forward: [
+      '清晰原图：有序的结构，像杯底的照片。',
+      '第一滴墨：边缘开始毛糙，细节轻微溶解。',
+      '墨迹扩散：色块边界像被水晕开。',
+      '分子乱撞：轮廓还在，但像隔着毛玻璃。',
+      '接近平衡：只剩模糊影子，结构快消失了。',
+      '热平衡：纯噪声，和电视雪花一样均匀随机。',
+    ],
+    reverse: [
+      '起点：纯噪声，浓雾笼罩，什么都看不见。',
+      '向导指路：大色块开始从混沌中凝聚。',
+      '轮廓浮现：「好像有个形状？」结构出现。',
+      '细节回归：边缘 sharpen，像擦去一层雾。',
+      '精细雕刻：纹理、高光、层次逐一恢复。',
+      '完成：清晰图像从噪声中「长」了出来。',
+    ],
+  };
+
+  function captionFor(s, m) {
+    const arr = captions[m];
+    const idx = Math.min(arr.length - 1, Math.floor(s / (STEPS / (arr.length - 1))));
+    return arr[idx];
+  }
+
+  /** 绘制一张「模拟清晰图」：渐变 + 简单形状（猫脸抽象） */
+  function drawOriginal() {
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#1a1a3e');
+    g.addColorStop(1, '#2d1b4e');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // 太阳
+    ctx.beginPath();
+    ctx.arc(W * 0.82, H * 0.18, 36, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffb86c';
+    ctx.fill();
+
+    // 猫脸椭圆
+    ctx.beginPath();
+    ctx.ellipse(W * 0.42, H * 0.52, 90, 75, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#c49a6c';
+    ctx.fill();
+
+    // 耳朵
+    [[-55, -60], [55, -60]].forEach(([dx]) => {
+      ctx.beginPath();
+      ctx.moveTo(W * 0.42 + dx, H * 0.52 - 50);
+      ctx.lineTo(W * 0.42 + dx - 28, H * 0.52 - 110);
+      ctx.lineTo(W * 0.42 + dx + 28, H * 0.52 - 75);
+      ctx.closePath();
+      ctx.fillStyle = '#c49a6c';
+      ctx.fill();
+    });
+
+    // 眼睛
+    [[-30, -8], [30, -8]].forEach(([dx, dy]) => {
+      ctx.beginPath();
+      ctx.ellipse(W * 0.42 + dx, H * 0.52 + dy, 14, 18, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#50fa7b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(W * 0.42 + dx, H * 0.52 + dy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#07080f';
+      ctx.fill();
+    });
+
+    // 鼻子
+    ctx.beginPath();
+    ctx.moveTo(W * 0.42, H * 0.52 + 18);
+    ctx.lineTo(W * 0.42 - 10, H * 0.52 + 32);
+    ctx.lineTo(W * 0.42 + 10, H * 0.52 + 32);
+    ctx.closePath();
+    ctx.fillStyle = '#ff79c6';
+    ctx.fill();
+
+    // 文字
+    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(236,239,244,.5)';
+    ctx.fillText('清晰原图 · 训练起点', 18, H - 18);
+  }
+
+  /** 预计算每一步的噪声层（正向累积） */
+  function buildNoiseLayers() {
+    drawOriginal();
+    originalData = ctx.getImageData(0, 0, W, H);
+    noiseLayers = [new ImageData(new Uint8ClampedArray(originalData.data), W, H)];
+
+    for (let i = 1; i <= STEPS; i++) {
+      const prev = noiseLayers[i - 1];
+      const next = new ImageData(new Uint8ClampedArray(prev.data), W, H);
+      const t = i / STEPS;
+      const noiseStrength = t * t * 0.85; // 越往后噪声越强，像墨越搅越匀
+
+      for (let j = 0; j < next.data.length; j += 4) {
+        // 掺入随机墨分子
+        const n = () => (Math.random() - 0.5) * 255 * noiseStrength;
+        next.data[j]     = clamp(prev.data[j]     + n(), 0, 255);
+        next.data[j + 1] = clamp(prev.data[j + 1] + n(), 0, 255);
+        next.data[j + 2] = clamp(prev.data[j + 2] + n(), 0, 255);
+        // 后期趋近纯灰噪声（热平衡）
+        if (t > 0.7) {
+          const gray = 128 + (Math.random() - 0.5) * 80;
+          const blend = (t - 0.7) / 0.3;
+          next.data[j]     = lerp(next.data[j],     gray, blend);
+          next.data[j + 1] = lerp(next.data[j + 1], gray, blend);
+          next.data[j + 2] = lerp(next.data[j + 2], gray, blend);
+        }
+      }
+      noiseLayers.push(next);
+    }
+  }
+
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function renderFrame(s) {
+    const idx = clamp(s, 0, STEPS);
+    ctx.putImageData(noiseLayers[idx], 0, 0);
+
+    // 叠加「墨晕 / 雾」视觉提示
+    const t = idx / STEPS;
+    if (mode === 'forward' && t > 0.1) {
+      ctx.fillStyle = `rgba(100,100,120,${t * 0.15})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (mode === 'reverse') {
+      const rt = 1 - t;
+      ctx.fillStyle = `rgba(126,184,255,${rt * 0.08})`;
+      ctx.fillRect(0, 0, W, H);
+      // 步骤指示
+      ctx.font = '600 13px system-ui';
+      ctx.fillStyle = 'rgba(80,250,123,.8)';
+      ctx.fillText(`去噪步 ${STEPS - idx} / ${STEPS}`, 18, 28);
+    } else {
+      ctx.font = '600 13px system-ui';
+      ctx.fillStyle = 'rgba(255,184,108,.8)';
+      ctx.fillText(`加噪步 ${idx} / ${STEPS}`, 18, 28);
+    }
+  }
+
+  function updateUI() {
+    const status = document.getElementById('demoStatus');
+    const cap = document.getElementById('demoCaption');
+    if (mode === 'forward') {
+      status.textContent = step >= STEPS ? '当前：纯噪声（热平衡）' : `正向加噪 · 步 ${step}/${STEPS}`;
+      cap.innerHTML = `<em>正向：</em>${captionFor(step, 'forward')}`;
+    } else {
+      status.textContent = step <= 0 ? '当前：清晰原图（生成完成）' : `反向去噪 · 步 ${STEPS - step}/${STEPS}`;
+      cap.innerHTML = `<em>反向：</em>${captionFor(STEPS - step, 'reverse')}`;
+    }
+  }
+
+  function animate() {
+    if (mode === 'forward') {
+      if (step < STEPS) { step++; renderFrame(step); updateUI(); animId = requestAnimationFrame(animate); }
+      else animId = null;
+    } else {
+      if (step > 0) { step--; renderFrame(step); updateUI(); animId = requestAnimationFrame(animate); }
+      else animId = null;
+    }
+  }
+
+  function startAnimation(m) {
+    if (animId) cancelAnimationFrame(animId);
+    mode = m;
+    document.getElementById('btnForward').classList.toggle('active', m === 'forward');
+    document.getElementById('btnReverse').classList.toggle('active', m === 'reverse');
+    if (m === 'forward' && step >= STEPS) step = 0;
+    if (m === 'reverse' && step <= 0) step = STEPS;
+    updateUI();
+    animId = requestAnimationFrame(animate);
+  }
+
+  function reset() {
+    if (animId) cancelAnimationFrame(animId);
+    animId = null;
+    step = 0;
+    mode = 'forward';
+    document.getElementById('btnForward').classList.add('active');
+    document.getElementById('btnReverse').classList.remove('active');
+    renderFrame(0);
+    updateUI();
+  }
+
+  document.getElementById('btnForward').onclick = () => startAnimation('forward');
+  document.getElementById('btnReverse').onclick = () => startAnimation('reverse');
+  document.getElementById('btnReset').onclick = reset;
+
+  buildNoiseLayers();
+  reset();
+})();
+</script>
+</body>
+</html>

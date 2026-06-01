@@ -2,7 +2,7 @@
  * 无人机陀螺仪姿态模拟 WebSocket 广播服务
  * 纯 Node.js 内置模块，无 npm 依赖
  *
- * 启动: node drone-gyro-ws-server.js
+ * 启动: node drone-gyro/2025-05-31-ws-broadcast/server.js
  * 默认: ws://127.0.0.1:8765
  *
  * 二进制帧格式 (16 字节, little-endian):
@@ -289,6 +289,18 @@ function shutdown() {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[!] 端口 ${HOST}:${PORT} 已被占用`);
+    console.error(`    先结束旧进程:  netstat -ano | findstr :${PORT}`);
+    console.error(`    再杀 PID:       taskkill /PID <pid> /F`);
+    console.error(`    或换端口:       set WS_PORT=8766 && node server.js\n`);
+    process.exit(1);
+  }
+  console.error('[!] 服务启动失败:', err.message);
+  process.exit(1);
+});
 
 server.listen(PORT, HOST, () => {
   console.log('═══════════════════════════════════════════════');
