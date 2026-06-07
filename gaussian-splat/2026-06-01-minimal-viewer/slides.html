@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>minimal-viewer · 3DGS 构建与渲染原理</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css" />
+  <style>
+    :root {
+      --bg: #000;
+      --text: #e8e8e8;
+      --muted: #888;
+      --line: #333;
+      --mono: Consolas, "Courier New", monospace;
+      --cn: system-ui, "Microsoft YaHei UI", sans-serif;
+    }
+
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--cn); }
+
+    .reveal { color: var(--text); font-family: var(--cn); background: var(--bg); }
+    .reveal .slides { text-align: left; }
+    .reveal .slides section { background: var(--bg); }
+    .reveal section { padding: 48px 56px; }
+
+    .reveal h1, .reveal h2, .reveal h3 {
+      margin: 0 0 24px;
+      font-weight: 600;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text);
+    }
+
+    .reveal h1 { font-size: 2.4em; line-height: 1.2; }
+    .reveal h2 { font-size: 1.75em; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+    .reveal h3 { font-size: 1.1em; color: var(--muted); margin-top: 20px; }
+
+    .reveal p, .reveal li {
+      font-size: 0.95em;
+      line-height: 1.6;
+      font-weight: 400;
+      color: var(--text);
+    }
+
+    .reveal ul, .reveal ol { margin: 0; padding-left: 1.4em; }
+    .reveal li { margin: 0.45em 0; }
+
+    .kicker { font-size: 0.75em; color: var(--muted); margin-bottom: 16px; }
+    .subtitle { margin-top: 16px; color: var(--muted); font-size: 1em; max-width: 720px; }
+    .note { margin-top: 20px; color: var(--muted); font-size: 0.9em; }
+    .foot { margin-top: 32px; font-size: 0.85em; color: var(--muted); }
+    .foot a { color: var(--text); }
+
+    code, pre {
+      font-family: var(--mono);
+      font-size: 0.85em;
+    }
+
+    code {
+      color: var(--text);
+      background: #111;
+      padding: 0.1em 0.35em;
+    }
+
+    pre {
+      margin: 16px 0 0;
+      padding: 16px;
+      background: #0a0a0a;
+      border: 1px solid var(--line);
+      line-height: 1.55;
+      white-space: pre-wrap;
+      color: #ccc;
+    }
+
+    .reveal .controls { color: var(--muted); }
+    .reveal .progress { background: #222; height: 2px; }
+    .reveal .progress span { background: #666; }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <section>
+        <div class="kicker">gaussian-splat / 2026-06-01-minimal-viewer</div>
+        <h1>minimal-viewer<br>怎么搭 & 3DGS 怎么画</h1>
+        <p class="subtitle">单文件 WebGL2 Demo：从 32 字节点云，到屏幕上三团柔光。</p>
+        <p class="foot">按 → 翻页 · Live Demo：<a href="./index.html">index.html</a></p>
+      </section>
+
+      <section>
+        <h2>这个 Demo 是什么？</h2>
+        <ul>
+          <li>不是 游戏模型（没有三角面、贴图）</li>
+          <li>不是 视频或全景图</li>
+          <li>是 3D Gaussian Splatting 的最小浏览器 Viewer</li>
+        </ul>
+        <p class="note">用 3500 颗半透明模糊椭球叠出画面。Demo 里是程序生成的红/绿/蓝三团，也可拖入真实 <code>.splat</code> 文件。</p>
+      </section>
+
+      <section>
+        <h2>和传统 3D 有何不同？</h2>
+        <ul>
+          <li>基本单元：三角形+纹理 vs 3D 高斯椭球+颜色</li>
+          <li>场景来源：人工建模 vs 多张照片 AI 重建</li>
+          <li>深度：Z-buffer vs 按深度排序 + Alpha 混合</li>
+          <li>观感：硬边清晰 vs 软边柔光、会渗色</li>
+        </ul>
+        <p class="note">优点：拍就能重建、转视角自然。缺点：文件大、难编辑，更像「冻结的光场」。</p>
+      </section>
+
+      <section>
+        <h2>一颗高斯存什么？32 字节</h2>
+        <pre>偏移 0–11   float32 × 3   位置 XYZ
+偏移 12–23  float32 × 3   缩放 scale（椭球多大）
+偏移 24–27  uint8 × 4     颜色 RGBA
+偏移 28–31  uint8 × 4     旋转四元数（椭球朝向）</pre>
+        <p class="note">3500 点 × 32B ≈ 109 KB。<code>createMockSplat()</code> 在内存里直接生成，不必下载大文件。</p>
+      </section>
+
+      <section>
+        <h2>Demo 四层结构</h2>
+        <ul>
+          <li>UI — HUD · 8 段导览</li>
+          <li>数据 — Mock / 拖入 .splat</li>
+          <li>Worker — 纹理打包 · 排序</li>
+          <li>WebGL2 — Shader 绘制 · 混合</li>
+        </ul>
+        <p class="note">全部在一个 index.html，无 npm。渲染核心 fork 自 antimatter15/splat（MIT）。</p>
+      </section>
+
+      <section>
+        <h2>主线程 vs Worker</h2>
+        <h3>主线程</h3>
+        <ul>
+          <li>WebGL2 画屏</li>
+          <li>相机 / 导览 / 输入</li>
+          <li>每帧 <code>drawArraysInstanced</code></li>
+        </ul>
+        <h3>Web Worker</h3>
+        <ul>
+          <li><code>generateTexture()</code> — .splat → GPU 纹理</li>
+          <li><code>runSort()</code> — 按深度排序</li>
+          <li>postMessage 回传 <code>texdata</code> + <code>depthIndex</code></li>
+        </ul>
+        <p class="note">半透明不能靠 Z-buffer，必须从远到近画，排序在 CPU 做。</p>
+      </section>
+
+      <section>
+        <h2>每帧发生了什么？</h2>
+        <ol>
+          <li>更新相机 <code>viewMatrix</code></li>
+          <li>把 view 发给 Worker → 重新排序</li>
+          <li>Worker 回传排序后的 index 缓冲</li>
+          <li><code>clearColor(0,0,0,0)</code> — alpha 必须是 0</li>
+          <li>实例化绘制 3500 个 quad（每颗高斯一个）</li>
+        </ol>
+        <p class="note">左上角 fps 旁的 splats 数 = 当前参与绘制的点数</p>
+      </section>
+
+      <section>
+        <h2>3DGS 渲染管线（原理）</h2>
+        <p>3D 椭球 → 投影到屏幕 → 3D 协方差变 2D 协方差 → 画 2D 椭圆 quad → exp 衰减 + Alpha 叠加</p>
+        <p class="note">每颗高斯在屏幕上不是画一个点，而是画一张随视角变形的 2D 模糊椭圆。</p>
+      </section>
+
+      <section>
+        <h2>顶点 Shader 做什么？</h2>
+        <ul>
+          <li>用 <code>index</code> 从整数纹理 <code>texelFetch</code> 读位置 & 协方差</li>
+          <li>3D 协方差 → 投影 → 2D 协方差 <code>cov2d</code></li>
+          <li>算椭圆长轴 <code>majorAxis</code>、短轴 <code>minorAxis</code></li>
+          <li>同一个 quad 模板实例化 3500 次</li>
+        </ul>
+        <pre>gl_Position = vCenter + position.x * majorAxis/viewport
+                        + position.y * minorAxis/viewport</pre>
+      </section>
+
+      <section>
+        <h2>片元 Shader + 混合</h2>
+        <pre>float A = -dot(vPosition, vPosition);
+float B = exp(A) * vColor.a;
+fragColor = vec4(B * vColor.rgb, B);</pre>
+        <ul>
+          <li>中心亮、边缘虚 → 柔光</li>
+          <li><code>DEPTH_TEST</code> 关闭，全靠排序</li>
+          <li>混合：<code>ONE_MINUS_DST_ALPHA, ONE</code></li>
+        </ul>
+        <p class="note">踩坑：若 clearColor 的 alpha=1，半透明叠不上去 → 全黑。</p>
+      </section>
+
+      <section>
+        <h2>Worker：点云 → GPU 纹理</h2>
+        <p>原始 .splat GPU 不能直接读，Worker 打包成 <code>RGBA32UI</code> 纹理：</p>
+        <ul>
+          <li>Texel A — 位置 XYZ（float bits）</li>
+          <li>Texel B — 协方差（half-float）+ RGBA</li>
+        </ul>
+        <p class="note">每颗高斯占 2 个 texel。3500 点 → 约 2048×4 纹理。</p>
+      </section>
+
+      <section>
+        <h2>为什么这样构建 Demo？</h2>
+        <ul>
+          <li>单文件 — 一眼看完管线</li>
+          <li>Mock 三球 — 不依赖大场景文件</li>
+          <li>Worker 排序 — 和真 Viewer 一致</li>
+          <li>8 段导览 — 相机对准红/绿/蓝</li>
+          <li>可拖 .splat — 接真实数据</li>
+        </ul>
+        <p class="note">不做 React / Three.js，避免藏掉 Shader 和排序细节。</p>
+      </section>
+
+      <section>
+        <h2>从拍照到屏幕（完整故事）</h2>
+        <p>多张照片 → 训练（Demo 未做）→ 导出 .splat → Viewer 加载 → 排序 + Shader → 三团柔光</p>
+        <p class="note">训练学出每颗高斯的参数；Viewer 只负责读参数、排序、画 2D 高斯斑、混合。</p>
+      </section>
+
+      <section>
+        <h2>对照：看画面时想什么</h2>
+        <ul>
+          <li>左红右绿下蓝 → Mock 三个 cluster</li>
+          <li>边缘发虚 → 片元 exp(-r²) 衰减</li>
+          <li>旋转前后关系对 → Worker 每帧 runSort</li>
+          <li>3500 splats → drawArraysInstanced 实例数</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>建议阅读代码顺序</h2>
+        <ol>
+          <li><code>createMockSplat</code> — 数据从哪来</li>
+          <li><code>createWorker</code> → <code>generateTexture</code> / <code>runSort</code></li>
+          <li>顶点 Shader <code>VS</code> — 3D→2D 椭球</li>
+          <li>片元 Shader <code>FS</code> + <code>blendFuncSeparate</code></li>
+          <li><code>frame()</code> — 每帧串联</li>
+        </ol>
+        <p class="foot">Live Demo → <a href="./index.html">index.html</a></p>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      controls: true,
+      progress: true,
+      center: false,
+      width: 1280,
+      height: 720,
+      margin: 0.06,
+      transition: "none",
+      backgroundTransition: "none"
+    });
+  </script>
+</body>
+</html>

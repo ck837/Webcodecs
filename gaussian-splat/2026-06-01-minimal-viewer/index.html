@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D 高斯泼溅 Demo</title>
+<style>
+*{margin:0;box-sizing:border-box}html,body{overflow:hidden;width:100%;height:100%;background:#050508}
+#c{display:block;width:100%;height:100%;touch-action:none}
+#hud{position:fixed;top:10px;left:10px;right:10px;max-width:560px;color:#fff;font:13px/1.55 system-ui,sans-serif;text-shadow:0 1px 6px #000}
+#hud h1{font-size:15px;font-weight:600;margin-bottom:4px}
+#hud p.desc{color:#c9d1d9;margin-bottom:6px}
+#hud .hint{color:#8b949e;font-size:12px}
+#hud .ctrl{pointer-events:auto;margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+#hud button,#hud input[type=file]{padding:6px 10px;border:1px solid #58a6ff;border-radius:6px;background:rgba(88,166,255,.15);color:#fff;font-size:11px;cursor:pointer}
+#hud button:hover{background:rgba(88,166,255,.3)}
+#tour{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);width:min(640px,calc(100% - 32px));padding:16px 18px;border-radius:12px;background:rgba(12,14,22,.92);border:1px solid rgba(88,166,255,.35);color:#e6edf3;font:14px/1.6 system-ui,sans-serif;box-shadow:0 8px 32px rgba(0,0,0,.45);pointer-events:auto}
+#tour .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(88,166,255,.2);color:#79c0ff;font-size:11px;font-weight:600;margin-bottom:8px}
+#tour h2{font-size:16px;font-weight:600;color:#fff;margin-bottom:6px}
+#tour p{margin:0;color:#c9d1d9}
+#tour .bar{height:3px;background:rgba(255,255,255,.12);border-radius:2px;margin:12px 0 10px;overflow:hidden}
+#tour .bar>i{display:block;height:100%;background:#58a6ff;border-radius:2px;transition:width .2s}
+#tour .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#tour .btns button{padding:6px 12px;border:1px solid #444;border-radius:6px;background:rgba(255,255,255,.06);color:#fff;font-size:12px;cursor:pointer}
+#tour .btns button.primary{border-color:#58a6ff;background:rgba(88,166,255,.2)}
+#tour .btns button:hover{background:rgba(255,255,255,.12)}
+#status{color:#8b949e;margin-top:6px;font-size:11px;min-height:1.2em}
+#status.err{color:#f85149}#status.ok{color:#3fb950}
+#err{position:fixed;inset:0;display:none;place-items:center;color:#f55;font:14px system-ui;padding:20px;text-align:center;background:rgba(0,0,0,.85)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <h1>3D 高斯泼溅 · 分步讲解</h1>
+  <p class="hint">分步导览在底部 · 原理幻灯片 <a href="./slides.html" style="color:#58a6ff">slides.html</a> · 左键拖拽 · 滚轮缩放</p>
+  <div id="fps">—</div>
+  <div class="ctrl">
+    <button type="button" id="btnRemock">重新生成三球</button>
+    <input type="file" id="fileIn" accept=".splat" title="加载本地 .splat">
+  </div>
+  <div id="status"></div>
+</div>
+<div id="tour">
+  <div class="badge" id="tourBadge">1 / 8</div>
+  <h2 id="tourTitle">加载中…</h2>
+  <p id="tourBody"></p>
+  <div class="bar"><i id="tourBar" style="width:0%"></i></div>
+  <div class="btns">
+    <button type="button" id="tourPrev">← 上一段</button>
+    <button type="button" id="tourPause" class="primary">暂停</button>
+    <button type="button" id="tourNext">下一段 →</button>
+    <button type="button" id="tourSkip">跳过，自己看</button>
+  </div>
+</div>
+<div id="err"></div>
+<script>
+// Core from antimatter15/splat (MIT) — minimal single-file .splat WebGL2 viewer
+const ROW = 32;
+const canvas = document.getElementById('c');
+const errEl = document.getElementById('err');
+const fpsEl = document.getElementById('fps');
+const statusEl = document.getElementById('status');
+const MOCK_COUNT = 3500;
+const DEFAULT_VIEW = [0.47,0.04,0.88,0,-0.11,0.99,0.02,0,-0.88,-0.11,0.47,0,0.07,0.03,6.55,1];
+const TOUR_STEP_MS = 12000;
+
+/** 每段：标题、说明、相机偏转（yaw/pitch 弧度，zoom 负值拉近） */
+const TOUR_STEPS = [
+  {
+    title: '这是什么？',
+    body: '这叫 3D 高斯泼溅（3D Gaussian Splatting）。不用三角形拼模型，而是用成千上万个「半透明模糊圆盘」堆出形状。你现在看到的是演示数据，不是拍出来的实景。',
+    yaw: 0, pitch: 0, zoom: 0,
+  },
+  {
+    title: '一个点 = 一颗「高斯」',
+    body: '每个点存 4 样东西：① 在空间里的位置 XYZ  ② 有多大（scale）  ③ 什么颜色  ④ 朝哪倾斜（旋转）。单独一颗几乎看不见，叠几千颗才像一团光。',
+    yaw: 0, pitch: 0, zoom: -1.2,
+  },
+  {
+    title: '看左边：红色球团',
+    body: '红色点聚在左侧。离近看，边缘是虚的、会渗色——这就是高斯模糊，不是 PNG 贴图。真实扫描里，这一团可能对应「一个物体表面」。',
+    yaw: 0.55, pitch: -0.05, zoom: -0.8,
+  },
+  {
+    title: '看右边：绿色球团',
+    body: '绿色在右侧，和红色分开，方便你对比。训练时 AI 会给不同区域自动上色；这里我们手工指定红/绿/蓝，让你一眼分清三团。',
+    yaw: -0.55, pitch: -0.05, zoom: -0.8,
+  },
+  {
+    title: '看下方：蓝色球团',
+    body: '蓝色在下方。三团之间有空隙，旋转时能看到它们是独立的云，不是一张平面图片。实景 .splat 里通常是连续的一整场景。',
+    yaw: 0, pitch: 0.42, zoom: -0.5,
+  },
+  {
+    title: '为什么要「排序」？',
+    body: '半透明必须知道谁先谁后。Worker 里每帧按深度排序 3500 个点，再从后往前画。左上角 fps 里的 splats 数量就是当前参与排序的点数。',
+    yaw: 0.35, pitch: 0.15, zoom: 0,
+  },
+  {
+    title: '和传统 3D 有何不同？',
+    body: '游戏模型 = 三角面 + 贴图。高斯泼溅 = 点云 + 每点一个椭球。优点：拍照片就能重建，转视角也自然。缺点：文件大、编辑难，更像「冻结的光场」。',
+    yaw: -0.25, pitch: 0.2, zoom: 0.3,
+  },
+  {
+    title: '接下来你可以…',
+    body: '① 左键拖拽自己转  ② 滚轮缩放  ③ 点「重新生成三球」换布局  ④ 拖入真实 .splat 文件。导览播完后相机会极慢自转；按「跳过」可立即自己操作。',
+    yaw: 0, pitch: 0, zoom: 0,
+  },
+];
+
+function setStatus(msg, kind) {
+  statusEl.textContent = msg;
+  statusEl.className = kind || '';
+}
+
+function hslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 1/6) [r, g, b] = [c, x, 0];
+  else if (h < 2/6) [r, g, b] = [x, c, 0];
+  else if (h < 3/6) [r, g, b] = [0, c, x];
+  else if (h < 4/6) [r, g, b] = [0, x, c];
+  else if (h < 5/6) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+/** 三个明显可辨的彩色球团（红 / 绿 / 蓝） */
+function createMockSplat(count = MOCK_COUNT) {
+  const buf = new ArrayBuffer(count * ROW);
+  const f32 = new Float32Array(buf);
+  const u8 = new Uint8Array(buf);
+  const clusters = [
+    { cx: -0.55, cy: 0.15, cz: 0, hue: 0.0, per: 0.34 },
+    { cx: 0.55, cy: 0.15, cz: 0, hue: 0.33, per: 0.33 },
+    { cx: 0, cy: -0.55, cz: 0, hue: 0.62, per: 0.33 },
+  ];
+
+  for (let i = 0; i < count; i++) {
+    const o = i * ROW;
+    const fi = i * 8;
+    let roll = Math.random(), cl = clusters[0];
+    for (const c of clusters) { roll -= c.per; if (roll <= 0) { cl = c; break; } }
+
+    const u = Math.random(), v = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi = Math.acos(2 * v - 1);
+    const r = 0.08 + Math.cbrt(Math.random()) * 0.42;
+    f32[fi + 0] = cl.cx + r * Math.sin(phi) * Math.cos(theta);
+    f32[fi + 1] = cl.cy + r * Math.sin(phi) * Math.sin(theta);
+    f32[fi + 2] = cl.cz + r * Math.cos(phi);
+
+    const s = 0.45 + Math.random() * 0.55;
+    f32[fi + 3] = s;
+    f32[fi + 4] = s;
+    f32[fi + 5] = s;
+
+    const [r0, g0, b0] = hslToRgb(cl.hue + (Math.random() - 0.5) * 0.06, 0.85, 0.62);
+    u8[o + 24] = r0 | 0;
+    u8[o + 25] = g0 | 0;
+    u8[o + 26] = b0 | 0;
+    u8[o + 27] = 255;
+
+    u8[o + 28] = 255;
+    u8[o + 29] = 128;
+    u8[o + 30] = 128;
+    u8[o + 31] = 128;
+  }
+  return new Uint8Array(buf);
+}
+
+function getProjectionMatrix(fx, fy, w, h) {
+  const zn = 0.2, zf = 200;
+  return [(2*fx)/w,0,0,0, 0,-(2*fy)/h,0,0, 0,0,zf/(zf-zn),1, 0,0,-(zf*zn)/(zf-zn),0];
+}
+function multiply4(a,b){return[
+  b[0]*a[0]+b[1]*a[4]+b[2]*a[8]+b[3]*a[12], b[0]*a[1]+b[1]*a[5]+b[2]*a[9]+b[3]*a[13],
+  b[0]*a[2]+b[1]*a[6]+b[2]*a[10]+b[3]*a[14], b[0]*a[3]+b[1]*a[7]+b[2]*a[11]+b[3]*a[15],
+  b[4]*a[0]+b[5]*a[4]+b[6]*a[8]+b[7]*a[12], b[4]*a[1]+b[5]*a[5]+b[6]*a[9]+b[7]*a[13],
+  b[4]*a[2]+b[5]*a[6]+b[6]*a[10]+b[7]*a[14], b[4]*a[3]+b[5]*a[7]+b[6]*a[11]+b[7]*a[15],
+  b[8]*a[0]+b[9]*a[4]+b[10]*a[8]+b[11]*a[12], b[8]*a[1]+b[9]*a[5]+b[10]*a[9]+b[11]*a[13],
+  b[8]*a[2]+b[9]*a[6]+b[10]*a[10]+b[11]*a[14], b[8]*a[3]+b[9]*a[7]+b[10]*a[11]+b[11]*a[15],
+  b[12]*a[0]+b[13]*a[4]+b[14]*a[8]+b[15]*a[12], b[12]*a[1]+b[13]*a[5]+b[14]*a[9]+b[15]*a[13],
+  b[12]*a[2]+b[13]*a[6]+b[14]*a[10]+b[15]*a[14], b[12]*a[3]+b[13]*a[7]+b[14]*a[11]+b[15]*a[15],
+];}
+function invert4(a){
+  let b00=a[0]*a[5]-a[1]*a[4],b01=a[0]*a[6]-a[2]*a[4],b02=a[0]*a[7]-a[3]*a[4],b03=a[1]*a[6]-a[2]*a[5],
+  b04=a[1]*a[7]-a[3]*a[5],b05=a[2]*a[7]-a[3]*a[6],b06=a[8]*a[13]-a[9]*a[12],b07=a[8]*a[14]-a[10]*a[12],
+  b08=a[8]*a[15]-a[11]*a[12],b09=a[9]*a[14]-a[10]*a[13],b10=a[9]*a[15]-a[11]*a[13],b11=a[10]*a[15]-a[11]*a[14];
+  let det=b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06; if(!det)return null;
+  return[(a[5]*b11-a[6]*b10+a[7]*b09)/det,(a[2]*b10-a[1]*b11-a[3]*b09)/det,(a[13]*b05-a[14]*b04+a[15]*b03)/det,
+  (a[10]*b04-a[9]*b05-a[11]*b03)/det,(a[6]*b08-a[4]*b11-a[7]*b07)/det,(a[0]*b11-a[2]*b08+a[3]*b07)/det,
+  (a[14]*b02-a[12]*b05-a[15]*b01)/det,(a[8]*b05-a[10]*b02+a[11]*b01)/det,(a[4]*b10-a[5]*b08+a[7]*b06)/det,
+  (a[1]*b08-a[0]*b10-a[3]*b06)/det,(a[12]*b04-a[13]*b02+a[15]*b00)/det,(a[9]*b02-a[8]*b04-a[11]*b00)/det,
+  (a[5]*b07-a[4]*b09-a[6]*b06)/det,(a[0]*b09-a[1]*b07+a[2]*b06)/det,(a[13]*b01-a[12]*b03-a[14]*b00)/det,
+  (a[8]*b03-a[9]*b01+a[10]*b00)/det];
+}
+function rotate4(a,rad,x,y,z){let l=Math.hypot(x,y,z);x/=l;y/=l;z/=l;let s=Math.sin(rad),c=Math.cos(rad),t=1-c;
+  let b00=x*x*t+c,b01=y*x*t+z*s,b02=z*x*t-y*s,b10=x*y*t-z*s,b11=y*y*t+c,b12=z*y*t+x*s,b20=x*z*t+y*s,b21=y*z*t-x*s,b22=z*z*t+c;
+  return[a[0]*b00+a[4]*b01+a[8]*b02,a[1]*b00+a[5]*b01+a[9]*b02,a[2]*b00+a[6]*b01+a[10]*b02,a[3]*b00+a[7]*b01+a[11]*b02,
+  a[0]*b10+a[4]*b11+a[8]*b12,a[1]*b10+a[5]*b11+a[9]*b12,a[2]*b10+a[6]*b11+a[10]*b12,a[3]*b10+a[7]*b11+a[11]*b12,
+  a[0]*b20+a[4]*b21+a[8]*b22,a[1]*b20+a[5]*b21+a[9]*b22,a[2]*b20+a[6]*b21+a[10]*b22,a[3]*b20+a[7]*b21+a[11]*b22,...a.slice(12,16)];}
+function translate4(a,x,y,z){return[...a.slice(0,12),
+  a[0]*x+a[4]*y+a[8]*z+a[12],a[1]*x+a[5]*y+a[9]*z+a[13],a[2]*x+a[6]*y+a[10]*z+a[14],a[3]*x+a[7]*y+a[11]*z+a[15]];}
+
+function viewFromAngles(yaw, pitch, zoom) {
+  let inv = invert4(DEFAULT_VIEW);
+  inv = translate4(inv, 0, 0, 4);
+  if (yaw) inv = rotate4(inv, yaw, 0, 1, 0);
+  if (pitch) inv = rotate4(inv, pitch, 1, 0, 0);
+  if (zoom) inv = translate4(inv, 0, 0, zoom);
+  inv = translate4(inv, 0, 0, -4);
+  return invert4(inv);
+}
+
+function lerpView(a, b, t) {
+  return a.map((v, i) => v + (b[i] - v) * t);
+}
+
+const VS=`#version 300 es
+precision highp float;precision highp int;
+uniform highp usampler2D u_texture;uniform mat4 projection,view;uniform vec2 focal,viewport;
+in vec2 position;in int index;out vec4 vColor;out vec2 vPosition;
+void main(){
+  uvec4 cen=texelFetch(u_texture,ivec2((uint(index)&0x3ffu)<<1,uint(index)>>10),0);
+  vec4 cam=view*vec4(uintBitsToFloat(cen.xyz),1.);vec4 pos2d=projection*cam;
+  float clip=1.2*pos2d.w;
+  if(pos2d.z<-clip||pos2d.x<-clip||pos2d.x>clip||pos2d.y<-clip||pos2d.y>clip){gl_Position=vec4(0.,0.,2.,1.);return;}
+  uvec4 cov=texelFetch(u_texture,ivec2(((uint(index)&0x3ffu)<<1)|1u,uint(index)>>10),0);
+  vec2 u1=unpackHalf2x16(cov.x),u2=unpackHalf2x16(cov.y),u3=unpackHalf2x16(cov.z);
+  mat3 Vrk=mat3(u1.x,u1.y,u2.x,u1.y,u2.y,u3.x,u2.x,u3.x,u3.y);
+  mat3 J=mat3(focal.x/cam.z,0.,-(focal.x*cam.x)/(cam.z*cam.z),0.,-focal.y/cam.z,(focal.y*cam.y)/(cam.z*cam.z),0.,0.,0.);
+  mat3 T=transpose(mat3(view))*J;mat3 cov2d=transpose(T)*Vrk*T;
+  float mid=(cov2d[0][0]+cov2d[1][1])/2.;float radius=length(vec2((cov2d[0][0]-cov2d[1][1])/2.,cov2d[0][1]));
+  float lambda1=mid+radius,lambda2=mid-radius;if(lambda2<0.)return;
+  vec2 dv=vec2(cov2d[0][1],lambda1-cov2d[0][0]);float dvl=length(dv);
+  if(dvl<1e-4)dv=vec2(1.,0.);else dv/=dvl;
+  vec2 majorAxis=min(sqrt(2.*lambda1),1024.)*dv;
+  vec2 minorAxis=min(sqrt(2.*lambda2),1024.)*vec2(dv.y,-dv.x);
+  vColor=vec4((cov.w)&0xffu,(cov.w>>8)&0xffu,(cov.w>>16)&0xffu,(cov.w>>24)&0xffu)/255.;
+  vPosition=position;vec2 vCenter=vec2(pos2d)/pos2d.w;
+  gl_Position=vec4(vCenter+position.x*majorAxis/viewport+position.y*minorAxis/viewport,0.,1.);
+}`;
+const FS=`#version 300 es
+precision highp float;in vec4 vColor;in vec2 vPosition;out vec4 fragColor;
+void main(){float A=-dot(vPosition,vPosition);if(A<-4.)discard;float B=exp(A)*vColor.a;fragColor=vec4(B*vColor.rgb,B);}`;
+
+function createWorker(self){
+  let buffer,vertexCount=0,viewProj,lastProj=[],depthIndex=new Uint32Array(),lastVertexCount=0,sortRunning;
+  const rowLength=32;
+  const fv=new Float32Array(1),iv=new Int32Array(fv.buffer);
+  function floatToHalf(f){fv[0]=f;let x=iv[0],sign=(x>>31)&1,exp=(x>>23)&0xff,frac=x&0x7fffff,ne;
+    if(exp==0)ne=0;else if(exp<113){ne=0;frac|=0x800000;frac>>=(113-exp);if(frac&0x1000000){ne=1;frac=0;}}
+    else if(exp<142)ne=exp-112;else{ne=31;frac=0;}return(sign<<15)|(ne<<10)|(frac>>13);}
+  function packHalf2x16(x,y){return(floatToHalf(x)|(floatToHalf(y)<<16))>>>0;}
+  function generateTexture(){
+    if(!buffer)return;
+    const f_buffer=new Float32Array(buffer),u_buffer=new Uint8Array(buffer);
+    const texwidth=2048,texheight=Math.ceil((2*vertexCount)/texwidth);
+    const texdata=new Uint32Array(texwidth*texheight*4),texdata_c=new Uint8Array(texdata.buffer),texdata_f=new Float32Array(texdata.buffer);
+    for(let i=0;i<vertexCount;i++){
+      texdata_f[8*i+0]=f_buffer[8*i+0];texdata_f[8*i+1]=f_buffer[8*i+1];texdata_f[8*i+2]=f_buffer[8*i+2];
+      texdata_c[4*(8*i+7)+0]=u_buffer[32*i+24+0];texdata_c[4*(8*i+7)+1]=u_buffer[32*i+24+1];
+      texdata_c[4*(8*i+7)+2]=u_buffer[32*i+24+2];texdata_c[4*(8*i+7)+3]=u_buffer[32*i+24+3];
+      let scale=[f_buffer[8*i+3],f_buffer[8*i+4],f_buffer[8*i+5]];
+      let rot=[(u_buffer[32*i+28]-128)/128,(u_buffer[32*i+29]-128)/128,(u_buffer[32*i+30]-128)/128,(u_buffer[32*i+31]-128)/128];
+      const M=[1-2*(rot[2]**2+rot[3]**2),2*(rot[1]*rot[2]+rot[0]*rot[3]),2*(rot[1]*rot[3]-rot[0]*rot[2]),
+        2*(rot[1]*rot[2]-rot[0]*rot[3]),1-2*(rot[1]**2+rot[3]**2),2*(rot[2]*rot[3]+rot[0]*rot[1]),
+        2*(rot[1]*rot[3]+rot[0]*rot[2]),2*(rot[2]*rot[3]-rot[0]*rot[1]),1-2*(rot[1]**2+rot[2]**2)].map((k,j)=>k*scale[j/3|0]);
+      const sigma=[M[0]**2+M[3]**2+M[6]**2,M[0]*M[1]+M[3]*M[4]+M[6]*M[7],M[0]*M[2]+M[3]*M[5]+M[6]*M[8],
+        M[1]**2+M[4]**2+M[7]**2,M[1]*M[2]+M[4]*M[5]+M[7]*M[8],M[2]**2+M[5]**2+M[8]**2];
+      texdata[8*i+4]=packHalf2x16(4*sigma[0],4*sigma[1]);texdata[8*i+5]=packHalf2x16(4*sigma[2],4*sigma[3]);texdata[8*i+6]=packHalf2x16(4*sigma[4],4*sigma[5]);
+    }
+    self.postMessage({texdata,texwidth,texheight},[texdata.buffer]);
+  }
+  function runSort(viewProj){
+    if(!buffer)return;
+    const f_buffer=new Float32Array(buffer);
+    if(lastVertexCount!=vertexCount){generateTexture();lastVertexCount=vertexCount;}
+    else{let dot=lastProj[2]*viewProj[2]+lastProj[6]*viewProj[6]+lastProj[10]*viewProj[10];if(Math.abs(dot-1)<0.01)return;}
+    let maxD=-Infinity,minD=Infinity,sizeList=new Int32Array(vertexCount);
+    for(let i=0;i<vertexCount;i++){let d=((viewProj[2]*f_buffer[8*i]+viewProj[6]*f_buffer[8*i+1]+viewProj[10]*f_buffer[8*i+2])*4096)|0;
+      sizeList[i]=d;if(d>maxD)maxD=d;if(d<minD)minD=d;}
+    let span=maxD-minD; if(span<1)span=1;
+    let inv=(256*256-1)/span,counts0=new Uint32Array(256*256);
+    for(let i=0;i<vertexCount;i++){sizeList[i]=((sizeList[i]-minD)*inv)|0;counts0[sizeList[i]]++;}
+    let starts0=new Uint32Array(256*256);for(let i=1;i<256*256;i++)starts0[i]=starts0[i-1]+counts0[i-1];
+    depthIndex=new Uint32Array(vertexCount);for(let i=0;i<vertexCount;i++)depthIndex[starts0[sizeList[i]]++]=i;
+    lastProj=viewProj;self.postMessage({depthIndex,viewProj,vertexCount},[depthIndex.buffer]);
+  }
+  const throttledSort=()=>{if(!sortRunning){sortRunning=true;let lv=viewProj;runSort(lv);setTimeout(()=>{sortRunning=false;if(lv!==viewProj)throttledSort();},0);}};
+  self.onmessage=e=>{
+    if(e.data.buffer){buffer=e.data.buffer;vertexCount=e.data.vertexCount;lastVertexCount=0;lastProj=[];}
+    else if(e.data.view){viewProj=e.data.view;throttledSort();}
+  };
+}
+
+async function main(){
+  let viewMatrix = DEFAULT_VIEW.slice();
+  let vertexCount=0,projectionMatrix,downsample=1;
+  const fx0=1159.59,fy0=1164.66;
+
+  let tourOn = true, tourPaused = false, tourStep = 0, tourStepStart = performance.now();
+  const tourBadge = document.getElementById('tourBadge');
+  const tourTitle = document.getElementById('tourTitle');
+  const tourBody = document.getElementById('tourBody');
+  const tourBar = document.getElementById('tourBar');
+
+  function renderTourUi(now) {
+    const s = TOUR_STEPS[tourStep];
+    tourBadge.textContent = `${tourStep + 1} / ${TOUR_STEPS.length}`;
+    tourTitle.textContent = s.title;
+    tourBody.textContent = s.body;
+    const p = tourPaused ? 0 : Math.min(1, (now - tourStepStart) / TOUR_STEP_MS);
+    tourBar.style.width = (p * 100).toFixed(1) + '%';
+  }
+
+  function goTourStep(i, now) {
+    tourStep = (i + TOUR_STEPS.length) % TOUR_STEPS.length;
+    tourStepStart = now;
+    renderTourUi(now);
+  }
+
+  function endTour() {
+    tourOn = false;
+    document.getElementById('tour').style.display = 'none';
+  }
+
+  document.getElementById('tourPrev').onclick = () => { tourPaused = false; goTourStep(tourStep - 1, performance.now()); };
+  document.getElementById('tourNext').onclick = () => { tourPaused = false; goTourStep(tourStep + 1, performance.now()); };
+  document.getElementById('tourPause').onclick = (e) => {
+    tourPaused = !tourPaused;
+    e.target.textContent = tourPaused ? '继续' : '暂停';
+    if (!tourPaused) tourStepStart = performance.now() - (parseFloat(tourBar.style.width) / 100) * TOUR_STEP_MS;
+  };
+  document.getElementById('tourSkip').onclick = endTour;
+
+  renderTourUi(performance.now());
+
+  const gl=canvas.getContext('webgl2',{antialias:false,preserveDrawingBuffer:true});
+  if(!gl)throw new Error('需要 WebGL2');
+
+  const compile=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,compile(gl.VERTEX_SHADER,VS));
+  gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,FS));
+  gl.linkProgram(prog);gl.useProgram(prog);
+  gl.disable(gl.DEPTH_TEST);gl.enable(gl.BLEND);
+  gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA,gl.ONE,gl.ONE_MINUS_DST_ALPHA,gl.ONE);
+  gl.blendEquationSeparate(gl.FUNC_ADD,gl.FUNC_ADD);
+
+  const uP=gl.getUniformLocation(prog,'projection'),uV=gl.getUniformLocation(prog,'view'),
+        uF=gl.getUniformLocation(prog,'focal'),uVp=gl.getUniformLocation(prog,'viewport'),uT=gl.getUniformLocation(prog,'u_texture');
+  gl.uniform1i(uT,0);
+
+  const tri=new Float32Array([-2,-2,2,-2,2,2,-2,2]);
+  const vb=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,vb);gl.bufferData(gl.ARRAY_BUFFER,tri,gl.STATIC_DRAW);
+  const aP=gl.getAttribLocation(prog,'position');gl.enableVertexAttribArray(aP);gl.vertexAttribPointer(aP,2,gl.FLOAT,false,0,0);
+  const ib=gl.createBuffer(),aI=gl.getAttribLocation(prog,'index');
+  gl.enableVertexAttribArray(aI);gl.bindBuffer(gl.ARRAY_BUFFER,ib);gl.vertexAttribIPointer(aI,1,gl.INT,false,0,0);gl.vertexAttribDivisor(aI,1);
+  const tex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,tex);
+
+  const worker=new Worker(URL.createObjectURL(new Blob(['('+createWorker.toString()+')(self)'],{type:'application/javascript'})));
+  worker.onmessage=e=>{
+    if(e.data.texdata){
+      const{texdata,texwidth,texheight}=e.data;
+      gl.bindTexture(gl.TEXTURE_2D,tex);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32UI,texwidth,texheight,0,gl.RGBA_INTEGER,gl.UNSIGNED_INT,texdata);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
+    }else if(e.data.depthIndex){
+      gl.bindBuffer(gl.ARRAY_BUFFER,ib);gl.bufferData(gl.ARRAY_BUFFER,e.data.depthIndex,gl.DYNAMIC_DRAW);
+      vertexCount=e.data.vertexCount;
+    }
+  };
+
+  function resize(){
+    const w=innerWidth,h=innerHeight,fx=fx0* w/1959,fy=fy0* h/1090;
+    gl.canvas.width=Math.round(w/downsample);gl.canvas.height=Math.round(h/downsample);
+    gl.viewport(0,0,gl.canvas.width,gl.canvas.height);
+    gl.uniform2fv(uF,new Float32Array([fx,fy]));gl.uniform2fv(uVp,new Float32Array([w,h]));
+    projectionMatrix=getProjectionMatrix(fx,fy,w,h);gl.uniformMatrix4fv(uP,false,projectionMatrix);
+  }
+  addEventListener('resize',resize);resize();
+
+  function loadBuffer(buf) {
+    const n = Math.floor(buf.byteLength / ROW);
+    if (n < 1) throw new Error('Buffer 无效');
+    vertexCount = 0;
+    worker.postMessage({ buffer: buf.buffer.slice(0), vertexCount: n });
+    worker.postMessage({ view: multiply4(projectionMatrix, viewMatrix) });
+  }
+
+  function loadMock() {
+    const mock = createMockSplat(MOCK_COUNT);
+    loadBuffer(mock);
+    setStatus(`演示数据：左红 · 右绿 · 下蓝 · 共 ${MOCK_COUNT} 颗高斯`, 'ok');
+  }
+
+  loadMock();
+  document.getElementById('btnRemock').onclick = loadMock;
+
+  document.getElementById('fileIn').onchange = (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setStatus('读取本地文件…');
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        loadBuffer(new Uint8Array(fr.result));
+        setStatus(`本地文件: ${f.name}`, 'ok');
+      } catch (err) {
+        setStatus(err.message, 'err');
+      }
+    };
+    fr.readAsArrayBuffer(f);
+  };
+  addEventListener('dragover', (e) => e.preventDefault());
+  addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try {
+        loadBuffer(new Uint8Array(fr.result));
+        setStatus(`本地文件: ${f.name}`, 'ok');
+      } catch (err) {
+        setStatus(err.message, 'err');
+      }
+    };
+    fr.readAsArrayBuffer(f);
+  });
+
+  let down=0,sx=0,sy=0,last=0,avgFps=0,t0=performance.now();
+  canvas.onmousedown=e=>{down=1;sx=e.clientX;sy=e.clientY;e.preventDefault();if(tourOn)endTour();};
+  canvas.onmouseup=()=>{down=0;};
+  canvas.onmousemove=e=>{
+    if(!down)return;let inv=invert4(viewMatrix),dx=(4*(e.clientX-sx))/innerWidth,dy=(4*(e.clientY-sy))/innerHeight;
+    inv=translate4(inv,0,0,4);inv=rotate4(inv,dx,0,1,0);inv=rotate4(inv,-dy,1,0,0);inv=translate4(inv,0,0,-4);
+    viewMatrix=invert4(inv);sx=e.clientX;sy=e.clientY;
+  };
+  canvas.onwheel=e=>{e.preventDefault();let inv=invert4(viewMatrix);
+    inv=translate4(inv,0,0,-10*e.deltaY/innerHeight);viewMatrix=invert4(inv);};
+
+  function frame(now){
+    if(tourOn && !down){
+      if(!tourPaused && now - tourStepStart >= TOUR_STEP_MS){
+        if(tourStep >= TOUR_STEPS.length - 1) endTour();
+        else goTourStep(tourStep + 1, now);
+      }
+      const s = TOUR_STEPS[tourStep];
+      const target = viewFromAngles(s.yaw, s.pitch, s.zoom);
+      viewMatrix = lerpView(viewMatrix, target, 0.045);
+      renderTourUi(now);
+    }else if(!down && !tourOn){
+      const t=(now-t0)*0.000012;
+      let inv=invert4(DEFAULT_VIEW);
+      inv=translate4(inv,0,0,4);
+      inv=rotate4(inv,t,0,1,0);
+      inv=translate4(inv,0,0,-4);
+      viewMatrix=lerpView(viewMatrix,invert4(inv),0.04);
+    }
+    const viewProj=multiply4(projectionMatrix,viewMatrix);
+    worker.postMessage({view:viewProj});
+    if(vertexCount>0){
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
+      gl.uniformMatrix4fv(uV,false,viewMatrix);
+      gl.clearColor(0,0,0,0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.drawArraysInstanced(gl.TRIANGLE_FAN,0,4,vertexCount);
+    }
+    const fps=1000/(now-last||16);avgFps=avgFps*0.9+fps*0.1;
+    fpsEl.textContent=Math.round(avgFps)+' fps · '+vertexCount+' splats'+(vertexCount? '':' (排序中…)');
+    last=now;requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+main().catch(e=>{errEl.style.display='grid';errEl.textContent=e.message;});
+</script>
+</body>
+</html>

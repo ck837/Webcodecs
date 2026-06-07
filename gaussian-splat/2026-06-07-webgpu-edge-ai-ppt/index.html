@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>从业务封装走向显卡控制</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.css" />
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #111820;
+      --line: rgba(246, 249, 252, 0.16);
+      --green: #00ff66;
+      --blue: #00f0ff;
+      --text: #f6f9fc;
+      --muted: #c3ccd6;
+      --warn: #ffcc66;
+      --danger: #ff4d6d;
+      --mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, monospace;
+      --cn: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--cn);
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: #0d1117;
+      z-index: 0;
+    }
+
+    body::after {
+      content: none;
+    }
+
+    .reveal {
+      color: var(--text);
+      font-family: var(--cn);
+      letter-spacing: 0;
+      text-shadow: 0 0 1px rgba(246, 249, 252, 0.18);
+    }
+
+    .reveal .slides {
+      text-align: left;
+    }
+
+    .reveal section {
+      height: 100%;
+      padding: 64px 72px;
+    }
+
+    .reveal h1,
+    .reveal h2,
+    .reveal h3 {
+      margin: 0;
+      color: var(--blue);
+      font-family: var(--cn);
+      font-weight: 800;
+      letter-spacing: 0;
+      line-height: 1.08;
+      text-transform: none;
+      text-shadow:
+        0 0 14px rgba(0, 240, 255, 0.34),
+        0 0 28px rgba(0, 255, 102, 0.16);
+    }
+
+    .reveal h1 {
+      max-width: 1120px;
+      font-size: clamp(48px, 6vw, 86px);
+      background: linear-gradient(92deg, #f6f9fc 0%, var(--blue) 42%, var(--green) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .reveal h2 {
+      font-size: clamp(34px, 4vw, 58px);
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+      color: var(--green);
+    }
+
+    .reveal h3 {
+      font-size: 25px;
+      color: var(--blue);
+      margin-bottom: 12px;
+      font-family: var(--mono);
+    }
+
+    .reveal p,
+    .reveal li {
+      font-size: clamp(20px, 2vw, 30px);
+      font-weight: 650;
+      line-height: 1.55;
+    }
+
+    .reveal ul,
+    .reveal ol {
+      margin: 22px 0 0;
+      padding-left: 34px;
+    }
+
+    .reveal li {
+      margin: 13px 0;
+    }
+
+    .reveal strong,
+    .hot {
+      color: var(--green);
+      font-weight: 800;
+      text-shadow: 0 0 18px rgba(0, 255, 102, 0.35);
+    }
+
+    .blue {
+      color: var(--blue);
+      font-weight: 800;
+      text-shadow: 0 0 18px rgba(0, 240, 255, 0.28);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .danger {
+      color: var(--danger);
+      font-weight: 800;
+    }
+
+    code {
+      font-family: var(--mono);
+      color: var(--green);
+      background: #05080c;
+      border: 1px solid rgba(0, 255, 102, 0.22);
+      border-radius: 4px;
+      padding: 0.08em 0.32em;
+    }
+
+    .deck-kicker {
+      margin-bottom: 24px;
+      font-family: var(--mono);
+      font-size: 18px;
+      color: var(--blue);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      margin-top: 28px;
+      max-width: 920px;
+      font-size: clamp(24px, 2.6vw, 36px);
+      color: #e1e8ef;
+      line-height: 1.45;
+    }
+
+    .speaker {
+      position: absolute;
+      left: 72px;
+      bottom: 76px;
+      font-family: var(--mono);
+      font-size: 20px;
+      color: var(--muted);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 30px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid rgba(246, 249, 252, 0.12);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.42);
+    }
+
+    .compact p {
+      margin: 10px 0 0;
+      font-size: 23px;
+      font-weight: 650;
+      line-height: 1.5;
+    }
+
+    .codebox {
+      margin-top: 14px;
+      padding: 18px;
+      background: #05080c;
+      border: 1px solid rgba(139, 148, 158, 0.24);
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 650;
+      line-height: 1.55;
+      color: #f1f6fb;
+      white-space: pre-wrap;
+    }
+
+    .codebox .comment {
+      color: #aeb8c4;
+    }
+
+    .codebox .kw {
+      color: var(--blue);
+    }
+
+    .codebox .fn {
+      color: var(--green);
+    }
+
+    .statement {
+      margin-top: 26px;
+      padding: 22px 26px;
+      border-left: 4px solid var(--green);
+      background: #10171f;
+      font-size: clamp(22px, 2.3vw, 32px);
+      font-weight: 750;
+      line-height: 1.5;
+    }
+
+    .number-list {
+      counter-reset: item;
+      list-style: none;
+      padding-left: 0 !important;
+    }
+
+    .number-list li {
+      position: relative;
+      padding-left: 64px;
+      margin: 18px 0;
+    }
+
+    .number-list li::before {
+      counter-increment: item;
+      content: counter(item, decimal-leading-zero);
+      position: absolute;
+      left: 0;
+      top: 4px;
+      font-family: var(--mono);
+      font-size: 20px;
+      color: var(--blue);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      width: 44px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 4px;
+      background: #05080c;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 34px;
+    }
+
+    .pipe-node {
+      min-height: 112px;
+      padding: 18px;
+      border: 1px solid rgba(246, 249, 252, 0.12);
+      background: #10171f;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 750;
+      color: var(--text);
+    }
+
+    .pipe-node span {
+      display: block;
+      margin-top: 10px;
+      font-family: var(--cn);
+      font-size: 18px;
+      font-weight: 650;
+      color: #d5dde5;
+      line-height: 1.45;
+    }
+
+    .perf-widget {
+      position: fixed;
+      right: 18px;
+      bottom: 16px;
+      z-index: 20;
+      width: 250px;
+      padding: 12px 14px;
+      background: #05080c;
+      border: 1px solid rgba(0, 240, 255, 0.36);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--mono);
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.12);
+      backdrop-filter: blur(10px);
+    }
+
+    .perf-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .perf-value {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .bar {
+      height: 5px;
+      margin-top: 8px;
+      background: #111820;
+      overflow: hidden;
+      border-radius: 99px;
+    }
+
+    .bar > i {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      box-shadow: 0 0 16px rgba(0, 255, 102, 0.55);
+      transform: scaleX(0.92);
+      transform-origin: left center;
+    }
+
+    .reveal .progress {
+      color: var(--green);
+      height: 4px;
+    }
+
+    .reveal .controls {
+      color: var(--blue);
+    }
+
+    @media (max-width: 900px) {
+      .reveal section {
+        padding: 46px 28px 86px;
+      }
+
+      .grid-2,
+      .pipeline {
+        grid-template-columns: 1fr;
+      }
+
+      .speaker {
+        left: 28px;
+        bottom: 92px;
+      }
+
+      .perf-widget {
+        width: 220px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .codebox {
+        font-size: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+      <section>
+        <div class="deck-kicker">WEBGPU / SHADER / EDGE AI RENDERING</div>
+        <h1>从业务封装走向显卡控制：端侧 AI 渲染的高性能破局</h1>
+        <p class="subtitle">
+          <span class="hot">3DGS</span>、<span class="blue">WebGPU</span> 与多模态数据管道的底层解构
+        </p>
+        <div class="speaker">演讲人：[你的名字 / 前端工程团队]</div>
+      </section>
+
+      <section>
+        <h2>核心解构：Shader 与并行计算</h2>
+        <div class="statement">
+          <strong>GPU</strong> 是成千上万个核心同时开工的并行机器。
+          <strong>Shader</strong> 是直接运行在 GPU 上的像素 / 顶点计算程序。
+        </div>
+
+        <div class="grid-2">
+          <div class="panel compact">
+            <h3>CPU Serial Loop</h3>
+            <p>显式遍历屏幕，每个像素排队计算。吞吐被单线程调度、缓存局部性与主线程负载持续压制。</p>
+            <div class="codebox"><span class="kw">for</span> y in height:
+  <span class="kw">for</span> x in width:
+    uv = vec2(x, y) / resolution
+    color = <span class="fn">shade</span>(uv, time)
+    framebuffer[x, y] = color</div>
+          </div>
+
+          <div class="panel compact">
+            <h3>GPU Fragment Shader</h3>
+            <p>没有全局 <code>for</code> 循环。每个像素 / 顶点同时独立执行同一段数学逻辑。</p>
+            <div class="codebox"><span class="comment">// 每个 Fragment 并行执行</span>
+<span class="kw">fn</span> <span class="fn">fragment</span>(uv, t) -> color {
+  field = noise(uv * 8.0 + t)
+  return emit(field, uv)
+}</div>
+          </div>
+        </div>
+
+        <p>
+          核心心智：输入 <code>UV</code> 坐标与时间 <code>t</code>，GPU 在一个帧周期内把数学场喷刷成屏幕。
+        </p>
+      </section>
+
+      <section>
+        <h2>核心解构：WebGPU / WGSL</h2>
+        <div class="statement">
+          <strong>WebGPU</strong> 是显式图形与计算 API，直接映射现代 GPU 硬件。
+          <strong>WGSL</strong> 是它的专用着色器语言。
+        </div>
+
+        <ul>
+          <li>与 <span class="blue">WebGL</span> 的代差：解除 CPU 单线程状态机瓶颈，支持多线程并行提交命令。</li>
+          <li>原生支持 <span class="hot">Compute Shader</span>：渲染管线之外，直接调度通用并行计算。</li>
+          <li>端侧 AI 商业价值：不仅能画画，更能在端侧执行 <span class="blue">LLM / VLM</span> 矩阵乘法并行加速。</li>
+          <li>算力成本转移：推理从云端 GPU 下沉到用户终端，企业侧获得接近 <span class="hot">零算力成本</span> 的交付模型。</li>
+        </ul>
+
+        <div class="pipeline">
+          <div class="pipe-node">Command Encoder<span>显式录制 GPU 指令</span></div>
+          <div class="pipe-node">Render Pass<span>图形输出管线</span></div>
+          <div class="pipe-node">Compute Pass<span>AI / 物理 / 点云计算</span></div>
+          <div class="pipe-node">Queue Submit<span>批量提交，减少 CPU 抖动</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>核心解构：Buffer / Bind Group</h2>
+        <div class="statement">
+          <strong>Buffer</strong> 是显存中的连续内存块。
+          <strong>Bind Group</strong> 是 CPU 与 GPU 之间的显存指针和内存布局接口契约。
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <h3>Memory Contract</h3>
+            <ul>
+              <li>顶点、索引、Uniform、Storage 全部落到 Buffer。</li>
+              <li>Bind Group 描述资源槽位、访问权限、着色器可见性。</li>
+              <li>核心卡点是 <span class="danger">Memory Alignment</span>，例如 16 字节对齐。</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Performance Deadline</h3>
+            <ul>
+              <li>流式音视频、动态点云、传感器输入，本质都是跨硬件数据搬运。</li>
+              <li>精通 Buffer 才能做 <span class="hot">Zero-Copy</span>，直接送入 GPU。</li>
+              <li>避免主线程阻塞，避免掉帧，避免交互链路被内存拷贝拖死。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="codebox">CPU TypedArray
+  -> GPUBuffer mapped/writeBuffer
+  -> BindGroup layout contract
+  -> WGSL storage/uniform access
+  -> Render / Compute output</div>
+      </section>
+
+      <section>
+        <h2>降维交集：Three.js / WebXR 的真实关系</h2>
+
+        <div class="statement">
+          <span class="blue">Three.js / WebXR</span> 是应用层外壳：场景挂载、双眼对齐、相机控制。
+          <span class="hot">Shader / WebGPU / Buffer</span> 才是核心发动机。
+        </div>
+
+        <ol class="number-list">
+          <li>Three.js 的 <code>ShaderMaterial</code> 承载 AI 神经渲染，例如 <span class="hot">3DGS</span> 的像素输出。</li>
+          <li>新版 Three.js 正在全量重构 <code>WebGPURenderer</code>，它会成为未来 5 年的底层核心。</li>
+          <li>WebXR 触碰 <span class="danger">90Hz / 120Hz</span> 眩晕死线，必须靠 Buffer 优化和显存控制确保不掉帧。</li>
+        </ol>
+
+        <div class="pipeline">
+          <div class="pipe-node">Three.js<span>场景抽象 / 材质系统</span></div>
+          <div class="pipe-node">WebXR<span>设备姿态 / 双眼帧同步</span></div>
+          <div class="pipe-node">WebGPU<span>现代 GPU 指令接口</span></div>
+          <div class="pipe-node">WGSL<span>最终执行的并行程序</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>战略总结：为什么走硬核路径 B</h2>
+
+        <ul>
+          <li>常规 AI 封装框架，例如 <span class="blue">LangChain / LangGraph</span>，生命周期极短，正在随着模型能力进化被快速压缩。</li>
+          <li>大模型已经进入下半场：拼的不是谁会调 API，而是谁能把模型落到端侧、跑满终端性能。</li>
+          <li>科班硕士懂算法，但常缺高性能工程心智；前端 / 跨端团队的机会在 <span class="hot">算法消费端落地</span>。</li>
+        </ul>
+
+        <div class="statement">
+          转型宣示：攻克 <strong>WebGPU</strong>、<strong>Shader</strong> 与 <strong>显存管道</strong>，
+          成为最懂前沿算法消费端落地、能榨干终端 <span class="danger">60 / 90 帧</span> 性能的不可替代超级架构师。
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="perf-widget" aria-hidden="true">
+    <div class="perf-row">
+      <span>FRAME DEADLINE</span>
+      <span class="perf-value">16.67ms</span>
+    </div>
+    <div class="perf-row">
+      <span>SIM FPS</span>
+      <span id="fps" class="perf-value">60.0</span>
+    </div>
+    <div class="perf-row">
+      <span>GPU QUEUE</span>
+      <span id="queue" class="perf-value">LOW</span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@5/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      controls: true,
+      progress: true,
+      center: false,
+      width: 1280,
+      height: 720,
+      margin: 0.04,
+      transition: "slide",
+      backgroundTransition: "fade"
+    });
+
+    const fpsEl = document.getElementById("fps");
+    const queueEl = document.getElementById("queue");
+    const barEl = document.getElementById("bar");
+
+    let last = performance.now();
+    let frames = 0;
+    let acc = 0;
+
+    function tick(now) {
+      const dt = now - last;
+      last = now;
+      frames++;
+      acc += dt;
+
+      if (acc >= 500) {
+        const fps = frames * 1000 / acc;
+        const load = Math.max(0.72, Math.min(1, fps / 60));
+
+        fpsEl.textContent = fps.toFixed(1);
+        queueEl.textContent = fps >= 58 ? "LOW" : fps >= 50 ? "BUSY" : "DROP";
+        queueEl.style.color = fps >= 58 ? "#00ff66" : fps >= 50 ? "#ffcc66" : "#ff4d6d";
+        barEl.style.transform = `scaleX(${load})`;
+
+        frames = 0;
+        acc = 0;
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
