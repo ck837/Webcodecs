@@ -21,6 +21,10 @@ dj/
 │   ├── 总览.md
 │   └── 2026-06-01-*/
 │
+├── gaussian-splat/        ← 主题：3D Gaussian Splatting 与端侧渲染
+│   ├── 总览.md
+│   └── 2026-*/
+│
 └── drone-gyro/            ← 主题：陀螺仪 WebSocket 模拟
     ├── 总览.md
     └── 2025-05-31-*/
@@ -39,9 +43,11 @@ python -m http.server 8080
 | WebCodecs | [webcodecs/总览.md](./webcodecs/总览.md) | [/webcodecs/2025-05-31-decode-canvas/](./webcodecs/2025-05-31-decode-canvas/) |
 | Diffusion | [diffusion/总览.md](./diffusion/总览.md) | [/diffusion/2025-05-31-diffusion-visual/](./diffusion/2025-05-31-diffusion-visual/) |
 | LangGraph | [langgraph/总览.md](./langgraph/总览.md) | `python langgraph/2026-06-01-visual-agent-topology/visual_agent.py --serve` |
+| Gaussian Splat | [gaussian-splat/总览.md](./gaussian-splat/总览.md) | [/gaussian-splat/2026-06-01-minimal-viewer/](./gaussian-splat/2026-06-01-minimal-viewer/) |
 | Drone Gyro | [drone-gyro/总览.md](./drone-gyro/总览.md) | `node drone-gyro/2025-05-31-ws-broadcast/server.js` |
 
 ## 要求
 
 - Chrome / Edge 94+（WebCodecs Demo）
 - Node.js 18+（WebSocket Demo，无 npm 依赖）
+- Node.js 20+（i23DGS React/Three 工程）

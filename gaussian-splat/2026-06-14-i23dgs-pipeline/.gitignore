@@ -1,0 +1,15 @@
+node_modules/
+dist/
+data/uploads/*
+data/matted/*
+data/models/*
+!data/uploads/.gitkeep
+!data/matted/.gitkeep
+!data/models/.gitkeep
+public/real-splats/**
+!public/real-splats/official/manifest.json
+public/mock/*.splat
+*.webm
+*.log
+*.zip
+*.ksplat
