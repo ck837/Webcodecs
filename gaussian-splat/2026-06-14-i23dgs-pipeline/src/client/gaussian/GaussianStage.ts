@@ -11,7 +11,18 @@ export interface GaussianStageOptions {
 export interface CameraPreset {
   position: [number, number, number];
   lookAt: [number, number, number];
+  up?: [number, number, number];
+  fov?: number;
   maxDistance?: number;
+}
+
+export interface CameraSnapshot {
+  position: [number, number, number];
+  lookAt: [number, number, number];
+  up: [number, number, number];
+  fov: number;
+  distance: number;
+  maxDistance: number;
 }
 
 export class GaussianStage {
@@ -22,6 +33,7 @@ export class GaussianStage {
   private readonly viewer: GaussianSplats3D.Viewer;
   private readonly clock = new THREE.Clock();
   private fallbackGroup?: THREE.Group;
+  private platform?: THREE.Mesh;
   private frameId = 0;
   private splatSceneCount = 0;
 
@@ -68,6 +80,7 @@ export class GaussianStage {
   async loadSplat(url: string, cameraPreset?: CameraPreset): Promise<void> {
     this.options.onStatus('正在加载高斯模型...');
     this.clearFallback();
+    if (this.platform) this.platform.visible = false;
     await this.clearSplatScenes();
     await this.viewer.addSplatScene(url, {
       showLoadingUI: false,
@@ -84,6 +97,7 @@ export class GaussianStage {
 
   showFallbackProduct(): void {
     this.clearFallback();
+    if (this.platform) this.platform.visible = true;
     const group = new THREE.Group();
     const body = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.38, 0.85, 12, 32),
@@ -112,6 +126,7 @@ export class GaussianStage {
     this.camera.fov = 42;
     this.camera.near = 0.02;
     this.camera.far = 500;
+    this.camera.up.set(0, 1, 0);
     this.camera.lookAt(PRODUCT_TARGET);
     this.camera.updateProjectionMatrix();
     this.controls.target.copy(PRODUCT_TARGET);
@@ -123,7 +138,8 @@ export class GaussianStage {
   applyCameraPreset(preset: CameraPreset): void {
     const target = new THREE.Vector3(...preset.lookAt);
     this.camera.position.set(...preset.position);
-    this.camera.fov = 48;
+    this.camera.up.fromArray(preset.up ?? [0, 1, 0]).normalize();
+    this.camera.fov = preset.fov ?? 48;
     this.camera.near = 0.02;
     this.camera.far = 500;
     this.camera.lookAt(target);
@@ -132,6 +148,20 @@ export class GaussianStage {
     this.controls.minDistance = 0.05;
     this.controls.maxDistance = preset.maxDistance ?? 20;
     this.controls.update();
+  }
+
+  getCameraSnapshot(): CameraSnapshot {
+    const position = this.camera.position;
+    const target = this.controls.target;
+    const up = this.camera.up;
+    return {
+      position: roundTuple([position.x, position.y, position.z]),
+      lookAt: roundTuple([target.x, target.y, target.z]),
+      up: roundTuple([up.x, up.y, up.z]),
+      fov: roundNumber(this.camera.fov),
+      distance: roundNumber(position.distanceTo(target)),
+      maxDistance: roundNumber(this.controls.maxDistance)
+    };
   }
 
   dispose(): void {
@@ -169,13 +199,13 @@ export class GaussianStage {
     key.position.set(2, 3, 4);
     this.scene.add(hemi, key);
 
-    const platform = new THREE.Mesh(
+    this.platform = new THREE.Mesh(
       new THREE.CircleGeometry(0.92, 64),
       new THREE.MeshBasicMaterial({ color: 0xe4e7ee, transparent: true, opacity: 0.72 })
     );
-    platform.rotation.x = -Math.PI / 2;
-    platform.position.y = -0.84;
-    this.scene.add(platform);
+    this.platform.rotation.x = -Math.PI / 2;
+    this.platform.position.y = -0.84;
+    this.scene.add(this.platform);
   }
 
   private clearFallback(): void {
@@ -197,4 +227,12 @@ export class GaussianStage {
     await this.viewer.removeSplatScenes(indexes, false);
     this.splatSceneCount = 0;
   }
+}
+
+function roundNumber(value: number): number {
+  return Number(value.toFixed(4));
+}
+
+function roundTuple(value: [number, number, number]): [number, number, number] {
+  return [roundNumber(value[0]), roundNumber(value[1]), roundNumber(value[2])];
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { applyCameraPath } from './animation/camera-paths';
+import { applyOrbitAnimation, createOrbitAnimationState, type OrbitAnimationState } from './animation/camera-paths';
 import { getJob, requestModelGeneration, uploadProductImage } from './api/pipeline-client';
 import { AnimationPanel } from './components/AnimationPanel';
 import { PipelinePanel } from './components/PipelinePanel';
@@ -17,6 +17,7 @@ export function App(): JSX.Element {
   const recorderRef = useRef<RecorderSession | null>(null);
   const animationRef = useRef<number>(0);
   const animationStartRef = useRef<number>(0);
+  const orbitStateRef = useRef<OrbitAnimationState | null>(null);
   const [job, setJob] = useState<PipelineJob | undefined>();
   const [busy, setBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -119,6 +120,8 @@ export function App(): JSX.Element {
     void stageRef.current?.loadSplat(scene.url, {
       position: scene.cameraPosition,
       lookAt: scene.lookAt,
+      up: scene.cameraUp,
+      fov: scene.fov,
       maxDistance: scene.maxDistance
     })
       .then(() => setStatus(`已加载真实 3DGS：${scene.label}。来源：${scene.source}`))
@@ -144,11 +147,11 @@ export function App(): JSX.Element {
     setPlaying(true);
     setProgress(0);
     animationStartRef.current = performance.now();
+    orbitStateRef.current = createOrbitAnimationState(stage.camera, stage.controls.target);
 
     const frame = (now: number): void => {
       const t = Math.min(1, (now - animationStartRef.current) / animationMs);
-      applyCameraPath(stage.camera, t);
-      stage.controls.target.set(0, 0.16, 0);
+      if (orbitStateRef.current) applyOrbitAnimation(stage.camera, orbitStateRef.current, t);
       stage.controls.update();
       setProgress(t);
       if (t < 1) {
@@ -168,6 +171,15 @@ export function App(): JSX.Element {
     playAnimation();
   }, [playAnimation, recording]);
 
+  const printCamera = useCallback(() => {
+    const snapshot = stageRef.current?.getCameraSnapshot();
+    if (!snapshot) return;
+    const text = JSON.stringify(snapshot, null, 2);
+    console.log('i23DGS camera snapshot', snapshot);
+    void navigator.clipboard?.writeText(text).catch(() => undefined);
+    setStatus(`当前视角参数已打印并尝试复制到剪贴板：${text}`);
+  }, []);
+
   return (
     <main className="workbench">
       <PipelinePanel
@@ -186,8 +198,7 @@ export function App(): JSX.Element {
         <canvas ref={canvasRef} />
         <div className="viewport-meta">
           <span>OrbitControls</span>
-          <span>FOV 30-42</span>
-          <span>Target 0,0.16,0</span>
+          <span>围绕当前模型中心播放</span>
         </div>
         <AnimationPanel
           playing={playing}
@@ -197,6 +208,7 @@ export function App(): JSX.Element {
           onStop={stopAnimation}
           onRecord={recordAnimation}
           onResetCamera={() => stageRef.current?.resetCamera()}
+          onPrintCamera={printCamera}
         />
       </section>
     </main>

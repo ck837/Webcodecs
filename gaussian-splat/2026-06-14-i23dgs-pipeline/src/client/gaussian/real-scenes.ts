@@ -6,6 +6,8 @@ export interface RealSplatScene {
   source: string;
   cameraPosition: [number, number, number];
   lookAt: [number, number, number];
+  cameraUp: [number, number, number];
+  fov: number;
   maxDistance: number;
 }
 
@@ -16,8 +18,10 @@ export const realSplatScenes: RealSplatScene[] = [
     url: '/real-splats/official/bonsai/bonsai_trimmed.ksplat',
     sizeMb: 4.0,
     source: 'GaussianSplats3D official demo data',
-    cameraPosition: [0, 1.2, 3.4],
-    lookAt: [0, 0.8, 0],
+    cameraPosition: [5.3867, -3.0341, 3.2702],
+    lookAt: [-0.4846, 2.0406, 1.3271],
+    cameraUp: [0, -1, -0.6],
+    fov: 48,
     maxDistance: 8
   },
   {
@@ -26,8 +30,10 @@ export const realSplatScenes: RealSplatScene[] = [
     url: '/real-splats/official/bonsai/bonsai.ksplat',
     sizeMb: 19.9,
     source: 'GaussianSplats3D official demo data',
-    cameraPosition: [0, 1.2, 3.4],
-    lookAt: [0, 0.8, 0],
+    cameraPosition: [5.3867, -3.0341, 3.2702],
+    lookAt: [-0.4846, 2.0406, 1.3271],
+    cameraUp: [0, -1, -0.6],
+    fov: 48,
     maxDistance: 8
   },
   {
@@ -36,8 +42,10 @@ export const realSplatScenes: RealSplatScene[] = [
     url: '/real-splats/official/truck/truck.ksplat',
     sizeMb: 27.9,
     source: 'GaussianSplats3D official demo data',
-    cameraPosition: [3.2, 1.8, 4.2],
-    lookAt: [0, 0.6, 0],
+    cameraPosition: [-1, -4, 6],
+    lookAt: [0, 4, 0],
+    cameraUp: [0, -1, -0.6],
+    fov: 48,
     maxDistance: 18
   },
   {
@@ -46,8 +54,10 @@ export const realSplatScenes: RealSplatScene[] = [
     url: '/real-splats/official/stump/stump.ksplat',
     sizeMb: 70.3,
     source: 'GaussianSplats3D official demo data',
-    cameraPosition: [2.8, 1.7, 4.6],
-    lookAt: [0, 0.7, 0],
+    cameraPosition: [-1, -4, 6],
+    lookAt: [0, 4, 0],
+    cameraUp: [0, -1, -0.6],
+    fov: 48,
     maxDistance: 18
   },
   {
@@ -56,8 +66,10 @@ export const realSplatScenes: RealSplatScene[] = [
     url: '/real-splats/official/garden/garden.ksplat',
     sizeMb: 71.9,
     source: 'GaussianSplats3D official demo data',
-    cameraPosition: [3.8, 2.2, 5.5],
-    lookAt: [0, 0.8, 0],
+    cameraPosition: [-1, -4, 6],
+    lookAt: [0, 4, 0],
+    cameraUp: [0, -1, -0.6],
+    fov: 48,
     maxDistance: 22
   }
 ];

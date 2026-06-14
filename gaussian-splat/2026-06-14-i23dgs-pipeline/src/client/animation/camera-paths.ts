@@ -1,61 +1,61 @@
 import * as THREE from 'three';
 
-export interface CameraKeyframe {
-  time: number;
-  position: THREE.Vector3;
-  target: THREE.Vector3;
-  fov: number;
-}
-
 export const PRODUCT_TARGET = new THREE.Vector3(0, 0.08, 0);
 
-export const cameraKeyframes: CameraKeyframe[] = [
-  {
-    time: 0,
-    position: new THREE.Vector3(0, 0.55, 2.8),
-    target: PRODUCT_TARGET.clone(),
-    fov: 42
-  },
-  {
-    time: 0.34,
-    position: new THREE.Vector3(2.25, 0.62, 1.35),
-    target: PRODUCT_TARGET.clone(),
-    fov: 38
-  },
-  {
-    time: 0.68,
-    position: new THREE.Vector3(-2.15, 0.92, -1.2),
-    target: new THREE.Vector3(0, 0.2, 0),
-    fov: 35
-  },
-  {
-    time: 1,
-    position: new THREE.Vector3(0.32, 0.24, 1.08),
-    target: new THREE.Vector3(0, 0.28, 0),
-    fov: 30
-  }
-];
+export interface OrbitAnimationState {
+  target: THREE.Vector3;
+  radius: number;
+  height: number;
+  startAngle: number;
+  startFov: number;
+  up: THREE.Vector3;
+  basisRight: THREE.Vector3;
+  basisForward: THREE.Vector3;
+}
 
-export function applyCameraPath(camera: THREE.PerspectiveCamera, progress: number): void {
+export function createOrbitAnimationState(
+  camera: THREE.PerspectiveCamera,
+  target: THREE.Vector3
+): OrbitAnimationState {
+  const up = camera.up.clone().normalize();
+  const offset = camera.position.clone().sub(target);
+  const height = offset.dot(up);
+  const planar = offset.clone().sub(up.clone().multiplyScalar(height));
+  const radius = Math.max(0.01, planar.length());
+  const basisRight = radius > 0.01 ? planar.clone().normalize() : new THREE.Vector3(1, 0, 0);
+  const basisForward = new THREE.Vector3().crossVectors(up, basisRight).normalize();
+
+  return {
+    target: target.clone(),
+    radius,
+    height,
+    startAngle: 0,
+    startFov: camera.fov,
+    up,
+    basisRight,
+    basisForward
+  };
+}
+
+export function applyOrbitAnimation(
+  camera: THREE.PerspectiveCamera,
+  state: OrbitAnimationState,
+  progress: number
+): void {
   const t = THREE.MathUtils.clamp(progress, 0, 1);
-  let a = cameraKeyframes[0];
-  let b = cameraKeyframes[cameraKeyframes.length - 1];
-  for (let i = 0; i < cameraKeyframes.length - 1; i += 1) {
-    if (t >= cameraKeyframes[i].time && t <= cameraKeyframes[i + 1].time) {
-      a = cameraKeyframes[i];
-      b = cameraKeyframes[i + 1];
-      break;
-    }
-  }
+  const eased = smoothstep(t);
+  const angle = state.startAngle + eased * Math.PI * 2;
+  const radial = state.basisRight.clone().multiplyScalar(Math.cos(angle) * state.radius)
+    .add(state.basisForward.clone().multiplyScalar(Math.sin(angle) * state.radius));
 
-  const span = Math.max(0.0001, b.time - a.time);
-  const local = smoothstep((t - a.time) / span);
-  camera.position.lerpVectors(a.position, b.position, local);
-  const target = new THREE.Vector3().lerpVectors(a.target, b.target, local);
-
-  // FOV 越小，画面越像长焦特写；这里和位置一起插值，避免推进时画面突然跳变。
-  camera.fov = THREE.MathUtils.lerp(a.fov, b.fov, local);
-  camera.lookAt(target);
+  // Orbit in the active scene's camera-up coordinate frame, so official 3DGS
+  // scenes keep their intended orientation. No fixed world-Y center is used.
+  camera.position.copy(state.target)
+    .add(state.up.clone().multiplyScalar(state.height))
+    .add(radial);
+  camera.up.copy(state.up);
+  camera.fov = state.startFov;
+  camera.lookAt(state.target);
   camera.updateProjectionMatrix();
 }
 

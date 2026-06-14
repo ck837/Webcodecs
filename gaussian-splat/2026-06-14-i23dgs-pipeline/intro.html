@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>i23DGS 项目介绍</title>
+    <style>
+      :root {
+        color: #17202c;
+        background: #eef1f5;
+        font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(238, 241, 245, 0.8)),
+          #eef1f5;
+      }
+
+      a {
+        color: #176960;
+        text-decoration: none;
+      }
+
+      .page {
+        width: min(1120px, calc(100% - 40px));
+        margin: 0 auto;
+        padding: 40px 0 56px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+        gap: 28px;
+        align-items: center;
+        min-height: 420px;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: #1c7d73;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      h1 {
+        margin: 0;
+        color: #101820;
+        font-size: clamp(38px, 7vw, 72px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 680px;
+        margin: 20px 0 0;
+        color: #40526a;
+        font-size: 18px;
+        line-height: 1.75;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 16px;
+        border: 1px solid #206f66;
+        border-radius: 8px;
+        color: #fff;
+        background: #1c7d73;
+        font-weight: 760;
+      }
+
+      .button.secondary {
+        color: #26384e;
+        border-color: #c7d0dc;
+        background: #fff;
+      }
+
+      .visual {
+        position: relative;
+        min-height: 320px;
+        border-radius: 8px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 52% 42%, rgba(255, 255, 255, 0.95), rgba(212, 220, 231, 0.64) 58%, rgba(172, 187, 203, 0.78)),
+          #dce3ec;
+        border: 1px solid rgba(121, 134, 154, 0.22);
+      }
+
+      .splat-demo {
+        position: absolute;
+        inset: 0;
+      }
+
+      .dot {
+        position: absolute;
+        width: var(--s);
+        height: var(--s);
+        left: var(--x);
+        top: var(--y);
+        border-radius: 50%;
+        background: rgba(var(--c), 0.62);
+        filter: blur(2px);
+        transform: translate(-50%, -50%);
+      }
+
+      .caption {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        padding: 12px;
+        border-radius: 8px;
+        color: #31445d;
+        background: rgba(255, 255, 255, 0.8);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .section {
+        padding: 34px 0;
+        border-top: 1px solid #d5dae3;
+      }
+
+      h2 {
+        margin: 0 0 16px;
+        color: #111827;
+        font-size: 26px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        min-height: 150px;
+        padding: 18px;
+        border: 1px solid #d9e0ea;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .card h3 {
+        margin: 0 0 8px;
+        color: #17202c;
+        font-size: 16px;
+      }
+
+      .card p,
+      .section p,
+      li {
+        color: #40526a;
+        line-height: 1.75;
+      }
+
+      .pipeline {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 132px 1fr;
+        gap: 16px;
+        align-items: start;
+        padding: 14px 16px;
+        border: 1px solid #d9e0ea;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .step strong {
+        color: #1c7d73;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      th,
+      td {
+        padding: 14px 16px;
+        border-bottom: 1px solid #e1e6ef;
+        text-align: left;
+        color: #40526a;
+        line-height: 1.6;
+        vertical-align: top;
+      }
+
+      th {
+        color: #26384e;
+        background: #f7f9fc;
+        font-size: 13px;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: #e9eef5;
+        color: #26384e;
+        font-family: "Cascadia Code", Consolas, monospace;
+      }
+
+      @media (max-width: 820px) {
+        .hero,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .step {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Image to 3D Gaussian Splatting</p>
+          <h1>i23DGS 商品图转高斯展示平台</h1>
+          <p class="lead">
+            i23DGS 是一个围绕商品图片、主体抠图、3DGS 模型生成桥接和 Web 端交互展示的实验工作台。
+            它把 AI 图像处理、后端流程编排和 Three.js 高斯渲染串成一条可运行的工程链路。
+          </p>
+          <div class="actions">
+            <a class="button" href="./">打开工作台</a>
+            <a class="button secondary" href="./README.md">查看 README</a>
+          </div>
+        </div>
+        <div class="visual" aria-label="gaussian splat illustration">
+          <div class="splat-demo">
+            <span class="dot" style="--x: 45%; --y: 22%; --s: 34px; --c: 24, 35, 39"></span>
+            <span class="dot" style="--x: 58%; --y: 28%; --s: 26px; --c: 36, 52, 58"></span>
+            <span class="dot" style="--x: 50%; --y: 40%; --s: 88px; --c: 18, 32, 36"></span>
+            <span class="dot" style="--x: 36%; --y: 58%; --s: 120px; --c: 12, 24, 28"></span>
+            <span class="dot" style="--x: 66%; --y: 57%; --s: 96px; --c: 24, 38, 42"></span>
+            <span class="dot" style="--x: 54%; --y: 64%; --s: 54px; --c: 170, 190, 188"></span>
+          </div>
+          <div class="caption">
+            3DGS 不是传统三角面模型，而是一组带位置、尺度、旋转、颜色和透明度的 3D 高斯点。
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>当前 Demo 做了什么</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>图像预处理</h3>
+            <p>上传商品图片后，Node.js API 调用 Python <code>rembg</code> 输出透明 PNG，作为后续模型生成输入。</p>
+          </article>
+          <article class="card">
+            <h3>模型生成桥接</h3>
+            <p>本地 baseline 会从透明 PNG 构建 2.5D <code>.splat</code>；真实工业链路可切换为远端 AI Provider。</p>
+          </article>
+          <article class="card">
+            <h3>Web 端渲染</h3>
+            <p>前端使用 React、Three.js 和 GaussianSplats3D 加载 <code>.splat/.ksplat/.ply</code>，支持旋转、缩放、播放和录制。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>流水线</h2>
+        <div class="pipeline">
+          <div class="step">
+            <strong>1. Upload</strong>
+            <span>用户上传带背景的商品图，例如耳机、奶茶、鞋、包或小家电。</span>
+          </div>
+          <div class="step">
+            <strong>2. Matting</strong>
+            <span>Python <code>rembg</code> 提取主体，输出带透明通道的 PNG。</span>
+          </div>
+          <div class="step">
+            <strong>3. Generate</strong>
+            <span>本地脚本生成 2.5D splat baseline；工业模式下把透明 PNG 发给 LGM、TripoSR、多视图扩散或商业 3D API。</span>
+          </div>
+          <div class="step">
+            <strong>4. Render</strong>
+            <span>浏览器加载高斯模型，围绕模型中心播放一圈，必要时通过 MediaRecorder 导出 WebM。</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>本地 baseline 与真实 3DGS 的区别</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>类型</th>
+              <th>输入</th>
+              <th>原理</th>
+              <th>适合用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>本地图像高斯 baseline</td>
+              <td>1 张图片</td>
+              <td>把透明 PNG 的像素采样成彩色 Gaussian，并给一个浅层 2.5D 深度。</td>
+              <td>验证工程链路、快速预览、前端加载测试。</td>
+            </tr>
+            <tr>
+              <td>真实 3D Gaussian Splatting</td>
+              <td>几十到几百张图片或视频抽帧</td>
+              <td>通过相机位姿估计、稀疏点云初始化和高斯优化训练出完整 3D 场景。</td>
+              <td>高质量自由视角展示、空间重建、沉浸式浏览。</td>
+            </tr>
+            <tr>
+              <td>单图转 3DGS AI</td>
+              <td>1 张图片</td>
+              <td>大模型预测不可见角度和几何结构，再输出 mesh 或 Gaussian 表示。</td>
+              <td>商品快速建模、低成本资产草稿，但质量依赖模型能力。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>需要多少图片</h2>
+        <p>
+          如果目标是工业级商品重建，建议围绕物体拍摄上、中、下三层角度，每层 24-48 张，
+          总量大约 <strong>72-144 张</strong>。场景级重建通常需要 150-500 张以上。
+          单图方案可以跑通，但背面、侧面和遮挡区域主要依赖 AI 推断。
+        </p>
+      </section>
+
+      <section class="section">
+        <h2>项目文件</h2>
+        <ul>
+          <li>前端入口：<code>index.html</code> + <code>src/client/</code></li>
+          <li>后端 API：<code>src/server/</code></li>
+          <li>抠图脚本：<code>scripts/rembg_matting.py</code></li>
+          <li>本地高斯构建：<code>scripts/image_to_splat.py</code></li>
+          <li>真实样例模型：<code>public/real-splats/official/</code></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
