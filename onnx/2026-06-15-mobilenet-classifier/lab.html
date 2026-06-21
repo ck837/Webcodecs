@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ORT Web 交互实验课 · 图像分类全流程</title>
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{height:100%;background:#0c0c0c;color:#cccccc;font-family:Consolas,"Cascadia Mono","Courier New",ui-monospace,monospace;font-size:14px;line-height:1.55}
+.layout{display:grid;grid-template-columns:minmax(320px,460px) 1fr;grid-template-rows:1fr auto;height:100%}
+@media(max-width:900px){.layout{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}}
+
+.lesson{
+  background:#1e1e1e;border-right:1px solid #333;overflow-y:auto;padding:18px 16px 24px;
+  font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+.lesson h1{font-size:1.08rem;color:#569cd6;font-weight:800;margin-bottom:6px}
+.lesson .meta{font-size:.78rem;color:#858585;margin-bottom:12px;line-height:1.5}
+
+/* 总目标 — 始终可见 */
+.mission{
+  padding:12px 14px;margin-bottom:14px;border-radius:8px;
+  background:#1a2332;border:1px solid #264f78;
+}
+.mission h3{font-size:.72rem;color:#9cdcfe;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.mission p{font-size:.84rem;color:#d4d4d4;line-height:1.55}
+.mission .io{
+  margin-top:10px;padding:8px 10px;background:#0d1117;border-radius:6px;
+  font-family:Consolas,monospace;font-size:.78rem;color:#4ec9b0;line-height:1.6;
+}
+
+.pipeline-map{
+  display:flex;flex-wrap:wrap;gap:4px;margin:12px 0 4px;font-size:.68rem;
+}
+.pipeline-map span{
+  padding:3px 7px;border-radius:4px;background:#333;color:#858585;
+}
+.pipeline-map span.on{background:#007acc;color:#fff}
+.pipeline-map span.done{background:#264f78;color:#4ec9b0}
+
+.step-tag{
+  display:inline-block;padding:3px 10px;border-radius:4px;
+  background:#264f78;color:#9cdcfe;font-size:.72rem;font-weight:700;margin-bottom:8px;
+}
+.lesson h2{font-size:1.02rem;color:#dcdcaa;margin-bottom:4px}
+.lesson .subtitle{font-size:.82rem;color:#858585;margin-bottom:12px}
+
+.box{margin-bottom:12px;padding:10px 12px;border-radius:6px;font-size:.84rem;line-height:1.6}
+.box.goal{background:#1e3a2f;border-left:3px solid #3fb950}
+.box.goal strong{color:#3fb950;display:block;font-size:.72rem;margin-bottom:4px;letter-spacing:.04em}
+.box.why{background:#2d2a1e;border-left:3px solid #dcdcaa}
+.box.why strong{color:#dcdcaa;display:block;font-size:.72rem;margin-bottom:4px;letter-spacing:.04em}
+.box.body{color:#cccccc}
+.box.body p{margin-bottom:8px}
+.box.body ul,.box.body ol{padding-left:1.2em;margin:6px 0}
+.box.body li{margin:.3em 0}
+.box.body .detail-h{font-size:.78rem;color:#569cd6;font-weight:700;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.04em}
+.box.body .detail-h:first-child{margin-top:0}
+.pipe-pre{
+  margin:8px 0;padding:10px 12px;background:#0d1117;border-radius:6px;
+  font-family:Consolas,monospace;font-size:.72rem;line-height:1.55;color:#4ec9b0;
+  white-space:pre-wrap;
+}
+.boundary-table{width:100%;border-collapse:collapse;font-size:.78rem;margin:8px 0}
+.boundary-table th,.boundary-table td{border:1px solid #333;padding:6px 8px;text-align:left;vertical-align:top}
+.boundary-table th{background:#252526;color:#9cdcfe;font-weight:600}
+.tip{
+  margin-top:10px;padding:10px 12px;border-left:3px solid #007acc;
+  background:#252526;font-size:.82rem;color:#9cdcfe;line-height:1.55;
+}
+.tip strong{color:#569cd6}
+.lesson code{font-family:Consolas,monospace;font-size:.8rem;color:#ce9178;background:#2d2d2d;padding:1px 5px;border-radius:3px}
+
+.main{display:flex;flex-direction:column;min-height:0;background:#0c0c0c}
+.term-wrap{flex:1;overflow-y:auto;padding:12px 16px;min-height:0}
+.term{white-space:pre-wrap;word-break:break-all}
+.term .prompt{color:#cccccc}
+.term .cmd{color:#dcdcaa}
+.term .ok{color:#4ec9b0}
+.term .info{color:#9cdcfe}
+.term .err{color:#f44747}
+.term .dim{color:#858585}
+.term .hl{color:#569cd6}
+.term .banner{color:#569cd6;font-weight:bold}
+
+.viz{
+  border-top:1px solid #333;padding:12px 16px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;
+  background:#1a1a1a;min-height:100px;
+}
+.viz-label{font-size:.72rem;color:#666;width:100%;margin-bottom:4px;font-family:system-ui,sans-serif}
+.viz canvas{border:1px solid #444;background:#000}
+.viz #top5{font-family:system-ui,sans-serif;font-size:.85rem;flex:1;min-width:200px}
+.viz #top5 li{margin:4px 0;list-style:none}
+.viz .bar{height:5px;background:#333;border-radius:2px;margin-top:3px;overflow:hidden}
+.viz .bar i{display:block;height:100%;background:#007acc}
+
+.bar-ctrl{
+  grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:#252526;border-top:1px solid #333;flex-wrap:wrap;font-family:system-ui,sans-serif;
+}
+.bar-ctrl button{
+  padding:8px 16px;border:1px solid #555;border-radius:4px;
+  background:#0e639c;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;
+}
+.bar-ctrl button:hover{background:#1177bb}
+.bar-ctrl button:disabled{opacity:.4;cursor:not-allowed}
+.bar-ctrl button.secondary{background:#3c3c3c;border-color:#666}
+.bar-ctrl .progress{color:#858585;font-size:.82rem;margin-left:auto}
+.bar-ctrl a{color:#569cd6;font-size:.82rem;text-decoration:none}
+.steps{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.steps span{
+  width:26px;height:26px;display:grid;place-items:center;border-radius:4px;
+  font-size:.7rem;font-weight:700;background:#333;color:#858585;cursor:default;
+}
+.steps span.nav{cursor:pointer}
+.steps span.nav:hover{outline:1px solid #569cd6;background:#3c3c3c}
+.steps span.done{background:#264f78;color:#4ec9b0}
+.steps span.active{background:#007acc;color:#fff;outline:2px solid #569cd6}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="lesson">
+    <h1>浏览器里跑神经网络 · 实验课</h1>
+    <p class="meta">不用服务器算力，在你自己的 Chrome 里完成「认图」— 像机器学习课件一样，一步一步看代码做了什么。</p>
+
+    <div class="mission">
+      <h3>🎯 本实验到底要干什么？</h3>
+      <p>给一张<strong>图片</strong>（默认示例是一只狗），让浏览器里的 <strong>ResNet18</strong> 判断「这是什么物体」，并给出 Top-5 候选和置信度。</p>
+      <div class="io">输入：照片 (JPG)
+  ↓  7 步处理
+输出：「golden retriever 92%」「Labrador 5%」…</div>
+      <p style="margin-top:8px;font-size:.8rem;color:#858585">ImageNet 只有 1000 类，<strong>没有 headphones</strong>；测耳机图常会误判为 iPod 等。</p>
+    </div>
+
+    <div class="pipeline-map" id="pipelineMap"></div>
+    <div class="steps" id="stepDots"></div>
+    <div class="step-tag" id="stepTag">步骤 0 / 7</div>
+    <h2 id="lessonTitle">—</h2>
+    <p class="subtitle" id="lessonSubtitle"></p>
+    <div class="box goal" id="lessonGoal"></div>
+    <div class="box why" id="lessonWhy"></div>
+    <div class="box body" id="lessonBody"></div>
+    <div class="tip" id="lessonTip"></div>
+    <p style="margin-top:14px;font-size:.78rem;color:#666">
+      练完后 → <a href="./index.html" style="color:#569cd6">index.html 自由换图玩</a>
+    </p>
+  </aside>
+
+  <div class="main">
+    <div class="term-wrap">
+      <div class="term" id="terminal"></div>
+    </div>
+    <div class="viz">
+      <div class="viz-label">可视化区：预处理后图片 + Top-5 结果（第 5、7 步后出现）</div>
+      <canvas id="canvas" width="224" height="224" hidden></canvas>
+      <ol id="top5"></ol>
+    </div>
+  </div>
+
+  <div class="bar-ctrl">
+    <button type="button" id="btnPrev" class="secondary" disabled>← 上一步</button>
+    <button type="button" id="btnRun">▶ 执行本步</button>
+    <button type="button" id="btnNext" class="secondary">下一步 →</button>
+    <button type="button" id="btnAuto" class="secondary">自动跑完全部</button>
+    <button type="button" id="btnClear" class="secondary">重新开始</button>
+    <span class="progress" id="progress">从步骤 0 开始阅读</span>
+    <a href="./index.html">Demo 页</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+<script src="./preprocess.js"></script>
+<script>
+const MODEL_URL = './models/resnet18-v2-7.onnx';
+const MODEL_LABEL = 'ResNet18';
+const LABELS_URL = './models/imagenet_classes.txt';
+const SAMPLE_URL = './sample/dog.jpg';
+
+const PIPELINE_LABELS = ['总览', '①引擎', '②字典', '③模型', '④图片', '⑤张量', '⑥推理', '⑦结果'];
+
+const STEPS = [
+  {
+    title: '开始前：先看清整条流水线',
+    subtitle: '本步不跑代码，只建立全局地图',
+    goal: '搞懂「从打开网页到认出物体」中间经过哪几站，后面 6 步分别对应哪一站。',
+    why: '机器学习 Demo 最容易让人迷失在 API 细节里。先有地图，再记命令，才不会问「这一步到底图啥」。',
+    body: `<p>完整链路可以概括成 <strong>4 个阶段</strong>：</p>
+      <ol>
+        <li><strong>准备环境</strong>（步骤 1～3）— 装好推理引擎、类别字典、神经网络文件</li>
+        <li><strong>准备输入</strong>（步骤 4～5）— 读入图片，变成模型能吃的数字矩阵</li>
+        <li><strong>执行计算</strong>（步骤 6）— 矩阵送进网络，得到 1000 个分数</li>
+        <li><strong>读懂结果</strong>（步骤 7）— 分数最高的对应「最像什么物体」</li>
+      </ol>
+      <p>右侧黑框是「命令行输出区」：每步点执行，就会像 <code>ipconfig</code> 一样打印本步产生了什么数据。</p>`,
+    tip: '点「执行本步」会在终端打印路线图；然后点「下一步」进入真正的步骤 1。',
+    introOnly: true,
+    async run() {
+      printBanner('═══ 图像分类流水线（你要走的路径）═══');
+      print('');
+      print('  [准备]  1.ORT引擎  →  2.标签字典  →  3.加载模型', 'info');
+      print('  [输入]  4.读入图片  →  5.预处理为 Tensor', 'info');
+      print('  [计算]  6.session.run 推理', 'info');
+      print('  [输出]  7.解析 Top-5 类别', 'info');
+      print('');
+      printOk('看懂了吗？点「下一步」从步骤 1 开始真正执行。');
+    },
+  },
+  {
+    title: '步骤 1 · 启动 ONNX Runtime Web 引擎',
+    subtitle: '阶段：准备环境 — 安装「浏览器里的推理运行时」',
+    goal: '告诉浏览器：ORT 的 WASM 计算核心从哪里下载、可以开始干活了。',
+    why: '神经网络不能直接用 JavaScript 算，需要 ORT 把 .onnx 里的算子编译成 WASM 在本地跑。没这一步，后面所有 API 都不存在。',
+    body: `<p><strong>ONNX Runtime Web</strong> = 浏览器里的「推理引擎」，类似 Python 里的 <code>onnxruntime</code> 包。</p>
+      <ul>
+        <li>本 Demo 用 <code>wasm</code> 后端（兼容性最好）</li>
+        <li>配置 <code>ort.env.wasm.wasmPaths</code> 指向 CDN 上的 .wasm 文件</li>
+      </ul>
+      <p><strong>本步完成后你拥有：</strong>一个可用的 <code>ort</code> 全局对象。</p>`,
+    tip: '类比：像 cmd 里先确认 node -v 能跑 — 确认「引擎已就绪」。',
+    async run(ctx) {
+      printCmd('ort.env.wasm.wasmPaths = "…/onnxruntime-web/dist/"');
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+      printOk('推理引擎 WASM 路径已配置');
+      printInfo('ort 版本', ort.version ?? 'bundled');
+      printInfo('后端', 'WebAssembly (wasm)');
+      printDim('意义：浏览器现在「有能力」跑神经网络了，但还没有模型和数据。');
+    },
+  },
+  {
+    title: '步骤 2 · 加载 ImageNet 类别「字典」',
+    subtitle: '阶段：准备环境 — 给输出数字配人类可读的名字',
+    goal: '加载 1000 个类别名称（猫、狗、耳机…），供最后一步把 index 翻译成中文/英文标签。',
+    why: '模型输出的是 <strong>1000 个数字</strong>（第 0 类多大概率、第 1 类多大概率…），不是「耳机」两个字。没有字典，你只会看到 <code>281: 0.85</code> 而不知道 281 是什么。',
+    body: `<p>MobileNet 在 ImageNet 上训练，共 <strong>1000 类</strong>物体。</p>
+      <ul>
+        <li>文件 <code>imagenet_classes.txt</code> 第 N 行 = index N 的类别名</li>
+        <li>例如 index 281 可能是 「tabby cat」</li>
+      </ul>
+      <p><strong>本步完成后你拥有：</strong>长度 1000 的 <code>labels[]</code> 数组。</p>`,
+    tip: '类比：模型说的是「编号」，字典是「编号→名称」对照表。',
+    async run(ctx) {
+      printCmd(`fetch("${LABELS_URL}")`);
+      const t0 = performance.now();
+      const res = await fetch(LABELS_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      ctx.labels = (await res.text()).trim().split('\n');
+      printOk(`字典加载完成 (${(performance.now() - t0).toFixed(1)} ms)`);
+      printInfo('类别总数', ctx.labels.length);
+      printInfo('labels[0]', ctx.labels[0]);
+      printInfo('labels[281] (示例)', ctx.labels[281]);
+      printDim('意义：最后一步可以把「第 281 号」显示成具体物体名。');
+    },
+  },
+  {
+    title: '步骤 3 · 加载 ONNX 模型（神经网络本体）',
+    subtitle: '阶段：准备环境 — 把训练好的「大脑」装进浏览器',
+    goal: '创建 <code>InferenceSession</code>：下载 ResNet18 的 .onnx 文件并编译成可执行的计算图。',
+    why: '引擎（步骤1）只是「播放器」，模型才是「影片」。ResNet18 比 MobileNet 更准，约 45MB，仍适合浏览器。',
+    body: `<p><strong>核心 API ①</strong>：<code>ort.InferenceSession.create(url)</code></p>
+      <ul>
+        <li>解析 .onnx → 得到输入/输出节点名</li>
+        <li>首次较慢（下载 + 编译），之后可反复 <code>run</code></li>
+      </ul>
+      <p><strong>本步完成后你拥有：</strong><code>session</code> 对象，知道输入叫啥、输出叫啥。</p>`,
+    tip: 'Session 只创建一次，同一张图可推理多次；换图不用重新 load 模型。',
+    async run(ctx) {
+      printCmd(`await ort.InferenceSession.create("${MODEL_URL}")`);
+      const t0 = performance.now();
+      ctx.session = await ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      });
+      printOk(`模型加载成功 (${(performance.now() - t0).toFixed(0)} ms)`);
+      printInfo('inputNames', JSON.stringify(ctx.session.inputNames));
+      printInfo('outputNames', JSON.stringify(ctx.session.outputNames));
+      printDim('意义：「大脑」就位，只差喂一张图进去。');
+    },
+  },
+  {
+    title: '步骤 4 · 读入一张待识别的图片',
+    subtitle: '阶段：准备输入 — 拿到「现实世界」的像素',
+    goal: '把示例耳机图（或你上传的图）解码为浏览器里的 Image 对象，得到宽高像素。',
+    why: '模型不认识 JPG 文件，只认识数字矩阵。这一步是「原始素材进厂」— 从磁盘/内存到 Canvas 能处理的像素。',
+    body: `<p>示例使用 <code>sample/headphones.jpg</code>。</p>
+      <ul>
+        <li>真实产品里：用户上传、摄像头截图、Agent 截屏都可以</li>
+        <li>此时<strong>还没</strong>缩放到 224×224，下一步才做</li>
+      </ul>
+      <p><strong>本步完成后你拥有：</strong>内存中的 <code>Image</code>，知道原图分辨率。</p>`,
+    tip: '认图任务永远从「有一张照片」开始；没有图，后面步骤无法进行。',
+    async run(ctx) {
+      printCmd(`loadImage("${SAMPLE_URL}")`);
+      ctx.image = await loadImage(SAMPLE_URL);
+      printOk('图片解码成功');
+      printInfo('尺寸', `${ctx.image.width} × ${ctx.image.height} px`);
+      printInfo('路径', SAMPLE_URL);
+      document.getElementById('canvas').hidden = false;
+      drawImageNetInput(ctx2d, ctx.image);
+      printDim('意义：原材料到手 — 接下来要把它变成模型规定的格式。');
+    },
+  },
+  {
+    title: '步骤 5 · 预处理并打包成 Tensor',
+    subtitle: '阶段：准备输入 — ImageNet 标准 Resize(256)+CenterCrop(224)',
+    goal: '按 ImageNet 验证集规范缩放并中心裁剪，封装为 <code>ort.Tensor</code>，形状 <code>[1,3,224,224]</code>。',
+    why: '旧版 letterbox（黑边缩放进 224）与训练时不一致，会明显降精度。标准做法是短边 256 再中心裁 224。',
+    body: `<p><strong>核心 API ②</strong>：<code>new ort.Tensor('float32', data, dims)</code></p>
+      <ol>
+        <li>短边缩放到 256（等比）</li>
+        <li>从中心裁剪 224×224（不是黑边 letterbox）</li>
+        <li>RGB ÷255，ImageNet mean/std 标准化，NCHW 排列</li>
+      </ol>
+      <p><strong>本步完成后你拥有：</strong>可直接喂给模型的 <code>inputTensor</code>。</p>
+      <p class="detail-h">与步骤 6 的边界</p>
+      <p>本步<strong>只负责把图片变成数字矩阵</strong>，不做任何神经网络运算。下一步 <code>session.run</code> 才在 WASM 里跑卷积/池化/Softmax。</p>`,
+    tip: '类比：把中文菜单翻译成厨师只认的标准配方 — 格式不对，厨子（模型）做不出菜。',
+    async run(ctx) {
+      if (!ctx.image) throw new Error('请先执行步骤 4');
+      printCmd('preprocessImageNet(img)  // Resize256 + CenterCrop224');
+      printCmd("new ort.Tensor('float32', data, [1, 3, 224, 224])");
+      const t0 = performance.now();
+      const { tensor, stats } = preprocessImageNet(ctx.image, ctx2d);
+      ctx.inputTensor = tensor;
+      printOk(`Tensor 就绪 (${(performance.now() - t0).toFixed(2)} ms)`);
+      printInfo('形状 dims', '[1, 3, 224, 224] = 1张图·3通道·224高·224宽');
+      printInfo('元素个数', tensor.data.length);
+      printInfo('数值范围 min/max', `${stats.min.toFixed(3)} / ${stats.max.toFixed(3)}`);
+      printDim('意义：输入已「对齐训练规范」，可以送进神经网络了。');
+    },
+  },
+  {
+    title: '步骤 6 · session.run — 真正执行神经网络',
+    subtitle: '阶段：执行计算 — 前向传播 · WASM · 产出 1000 维概率',
+    goal: '把 inputTensor 喂给 session，跑完 .onnx 里全部算子，得到 1000 维输出向量（本 Demo 为 ResNet18）。',
+    why: '这是整个 Demo 的<strong>核心计算</strong>：卷积、池化、全连接在 WASM 里执行。你只写「喂数据、取结果」，数学全在 .onnx 权重里。',
+    body: `<p><strong>核心 API ③</strong>：<code>await session.run({ 输入名: tensor })</code></p>
+      <ul>
+        <li>输入 key 必须等于 <code>session.inputNames[0]</code></li>
+        <li>返回 <code>outputMap</code>，value 是另一份 Tensor（通常 1000 个 float）</li>
+      </ul>
+
+      <p class="detail-h">① API 层：你这一行在干什么</p>
+      <p><code>feeds</code> = 把 Tensor <strong>绑定到图上的输入端口</strong>。名字错了就接不上。<code>await</code> 等 WASM 算完，不阻塞 UI。</p>
+
+      <p class="detail-h">② .onnx 里算了什么（真正的数学）</p>
+      <p>约 45MB 权重 + 几百个算子节点。ResNet18 与 MobileNet 结构不同，但<strong>链路一样</strong>：</p>
+      <div class="pipe-pre">[1, 3, 224, 224]   ← 你喂进去的 RGB 张量
+        ↓
+   卷积 + BN + ReLU     ← 边缘、纹理等低级特征
+        ↓
+   多层特征提取块       ← ResNet：残差块；MobileNet：Inverted Residual
+        ↓                特征图逐渐变小、通道变多 (224→112→56→…→7→1)
+   Global Average Pool  ← 每通道整张图取平均 → 固定长度向量
+        ↓
+   分类头 (FC / 1×1 Conv) ← 映射到 1000 维
+        ↓
+   Softmax（通常已在模型里） ← 1000 个概率，和 ≈ 1
+        ↓
+[1, 1000]            ← outputMap 里的 data</div>
+
+      <p><strong>三种运算：</strong></p>
+      <ul>
+        <li><strong>卷积 Conv</strong> — 3×3 窗口滑动，加权求和。浅层看线条/色块，深层看「狗耳朵」「毛色纹理」等抽象模式。占绝大部分耗时。</li>
+        <li><strong>池化 Pool</strong> — 末尾 Global Average Pooling：不管物体偏左偏右，压成固定向量。</li>
+        <li><strong>全连接 / 1×1 卷积</strong> — 最后「投票」：综合特征，给 ImageNet 每类一个分。</li>
+      </ul>
+      <p>训练时已学好卷积核权重；推理只是<strong>用当前图片做一遍固定的乘加</strong> — 所以叫「你只管喂数据」。</p>
+
+      <p class="detail-h">③ WASM 扮演什么角色</p>
+      <div class="pipe-pre">JavaScript                WASM (ORT 算子)
+session.run()  ──→  conv / relu / pool / gemm …
+              ←──  输出 buffer 写回 JS</div>
+      <ul>
+        <li><strong>JS</strong> — 胶水：组 feeds、调 API、读结果</li>
+        <li><strong>WASM</strong> — 真正跑数值（比纯 JS 快很多）</li>
+        <li><strong>.onnx</strong> — 定义算子、权重、连接方式</li>
+      </ul>
+      <p>Demo 用 <code>executionProviders: ['wasm']</code> → <strong>CPU + WASM，无 GPU</strong>。换 WebGPU EP 仍是 <code>session.run</code>，只是算子在显卡上跑。</p>
+
+      <p class="detail-h">④ 输出的 1000 个数是什么</p>
+      <ul>
+        <li><code>out.data[i]</code> = 第 i 类（<code>labels[i]</code>）的概率</li>
+        <li>Softmax：logits → 0~1，<strong>全部加起来 ≈ 1</strong></li>
+        <li>例：<code>data[208]</code> 可能是 golden retriever 的概率</li>
+      </ul>
+      <p><strong>本步不做</strong> Top-5、不查字典、不读图片 — 那是步骤 7 的事。本步只产出 1000 个 float。</p>
+
+      <p class="detail-h">⑤ 一次 run 的时间线</p>
+      <div class="pipe-pre">T0  JS: session.run({ "data": tensor })
+T1  ORT 校验 shape [1,3,224,224]
+T2  数据拷进 WASM 内存
+T3  卷积块 1…N（占绝大部分 inferMs）
+T4  GlobalAvgPool → 1000 logits
+T5  Softmax → 1000 概率
+T6  写回 output Tensor
+T7  JS: await 结束，打印 inferMs</div>
+
+      <p class="detail-h">⑥ 与前后步骤的边界</p>
+      <table class="boundary-table">
+        <tr><th>步骤</th><th>谁负责</th><th>产出</th></tr>
+        <tr><td>5 预处理</td><td>你的 JS</td><td>符合规格的 inputTensor</td></tr>
+        <tr><td><strong>6 session.run</strong></td><td><strong>ORT + .onnx + WASM</strong></td><td><strong>1000 维概率</strong></td></tr>
+        <tr><td>7 后处理</td><td>你的 JS</td><td>Top-5 人类可读标签</td></tr>
+      </table>
+      <p><strong>本步完成后你拥有：</strong><code>outputMap</code> + <code>probs</code>（1000 个概率）。</p>`,
+    tip: '左侧内容较多，建议先通读再点执行；终端会打印时间线摘要。',
+    async run(ctx) {
+      if (!ctx.session || !ctx.inputTensor) throw new Error('请先完成步骤 3、5');
+      const inName = ctx.session.inputNames[0];
+      const outName = ctx.session.outputNames[0];
+      printCmd(`await session.run({ "${inName}": inputTensor })`);
+      printDim('T0-T2  绑定输入 → 校验 shape → 数据进 WASM');
+      const t0 = performance.now();
+      ctx.outputMap = await ctx.session.run({ [inName]: ctx.inputTensor });
+      ctx.inferMs = performance.now() - t0;
+      const out = ctx.outputMap[outName];
+      ctx.probs = toProbabilities(out.data);
+      printDim('T3-T5  卷积/池化/分类头 → Softmax（.onnx 内完成）');
+      printOk(`推理完成 (${ctx.inferMs.toFixed(1)} ms)  [T6-T7 写回 JS]`);
+      printInfo('inputName', inName);
+      printInfo('outputName', outName);
+      printInfo('output.dims', JSON.stringify(out.dims));
+      printInfo('向量长度', out.data.length + ' (= ImageNet 1000 类)');
+      printInfo('概率之和 ≈', sum(ctx.probs).toFixed(4));
+      const peek = topK(ctx.probs, 1)[0];
+      if (peek && ctx.labels.length) {
+        printInfo('最高分类 (预览)', `[${peek.i}] ${ctx.labels[peek.i]} ${(peek.score * 100).toFixed(1)}%`);
+        printDim('完整 Top-5 在步骤 7 解析');
+      }
+      printDim('边界：本步不缩放图片、不查 labels — 只产出 1000 个 float');
+    },
+  },
+  {
+    title: '步骤 7 · 解析 Top-5 — 人类能看懂的答案',
+    subtitle: '阶段：读懂输出 — 实验终点（后处理，不在 .onnx 里）',
+    goal: '从 1000 个概率中取出 Top-5，用步骤 2 的字典翻译成可读标签并展示置信度。',
+    why: '步骤 6 只给 raw 数字；产品/UI 需要「golden retriever 92%」这种人话。Top-5 比 Top-1 更稳健。',
+    body: `<p><strong>核心 API ④</strong>：<code>topK(toProbabilities(output.data), 5)</code> + <code>labels[index]</code></p>
+
+      <p class="detail-h">本步在干什么</p>
+      <ol>
+        <li>读步骤 6 的 <code>outputMap</code> / <code>probs</code></li>
+        <li>按分数降序排序，取前 5 个 index</li>
+        <li>用 <code>labels[i]</code> 查表 → 终端 + 右侧可视化</li>
+      </ol>
+
+      <p class="detail-h">怎么判断链路是否正确</p>
+      <ul>
+        <li>狗图 Top-1 应为 <strong>golden retriever / Labrador retriever</strong> 等</li>
+        <li>耳机图：ImageNet <strong>无 headphones 类</strong>，可能显示 iPod / microphone — 不代表代码错</li>
+        <li>若随机图也输出合理类别且置信度正常，说明 1～6 步全部对齐</li>
+      </ul>
+
+      <p class="detail-h">与步骤 6 的分工</p>
+      <table class="boundary-table">
+        <tr><th>步骤 6 做了</th><th>步骤 7 做</th></tr>
+        <tr><td>矩阵运算 → 1000 概率</td><td>排序 + 查字典 → Top-5 文字</td></tr>
+        <tr><td>在 WASM / .onnx 里</td><td>在你的 JS 里</td></tr>
+        <tr><td>不关心人类能否读懂</td><td>专为 UI / 用户可读</td></tr>
+      </table>
+      <p><strong>本步完成后：</strong>实验结束。到 index.html 可换图、换 ResNet18/MobileNet 继续玩。</p>`,
+    tip: '🎉 恭喜！你已经走完「浏览器端 AI 推理」完整闭环。',
+    async run(ctx) {
+      if (!ctx.outputMap || !ctx.labels.length) throw new Error('请先完成前面步骤');
+      printCmd('Top-5 = topK(toProbabilities(output), 5)');
+      const probs = ctx.probs ?? toProbabilities(ctx.outputMap[ctx.session.outputNames[0]].data);
+      const top5 = topK(probs, 5);
+      printOk('分类结果（人类可读）');
+      print('');
+      top5.forEach(({ i, score }, r) => {
+        appendHtml(`  <span class="hl">${r + 1}.</span> <span class="info">${esc(ctx.labels[i] ?? i)}</span>\n`);
+        appendHtml(`      <span class="dim">index=${i}  confidence=${(score * 100).toFixed(2)}%</span>\n`);
+      });
+      renderTop5(top5, ctx.labels);
+      print('');
+      printOk('═══ 实验完成 ═══');
+      printDim(`推理 ${ctx.inferMs?.toFixed(1)} ms · 输入图 → Tensor → 模型 → 「是什么」`);
+    },
+  },
+];
+
+const terminal = document.getElementById('terminal');
+const canvas = document.getElementById('canvas');
+const ctx2d = canvas.getContext('2d', { willReadFrequently: true });
+const state = {
+  step: 0,
+  furthest: 0,
+  done: new Array(STEPS.length).fill(false),
+  labels: [], session: null, image: null, inputTensor: null, outputMap: null, inferMs: 0, probs: null,
+};
+
+function maxNavStep() {
+  let m = state.furthest;
+  for (let i = 0; i < STEPS.length; i++) if (state.done[i]) m = Math.max(m, i);
+  return m;
+}
+
+function goToStep(i, opts = {}) {
+  if (i < 0 || i >= STEPS.length) return;
+  if (!opts.force && i > maxNavStep()) return;
+  state.step = i;
+  state.furthest = Math.max(state.furthest, i);
+  renderLesson();
+  document.querySelector('.lesson')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function bootTerminal() {
+  terminal.innerHTML = `<span class="dim">Microsoft Windows [Version 10.0.26100]
+(c) ONNX Runtime Web 交互实验环境
+
+左侧读讲解，下方点「执行本步」，右侧看输出。
+跑完某步后可点「上一步」或顶部圆点回看；终端输出会保留。
+
+</span>`;
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function appendHtml(h) { terminal.innerHTML += h; terminal.parentElement.scrollTop = terminal.parentElement.scrollHeight; }
+function print(t = '', c = 'info') { appendHtml(`<span class="${c}">${esc(t)}</span>\n`); }
+function printCmd(t) { appendHtml(`<span class="prompt">C:\\ort-lab&gt; </span><span class="cmd">${esc(t)}</span>\n`); }
+function printOk(t) { print('✓ ' + t, 'ok'); }
+function printInfo(k, v) { print(`    ${k}: ${v}`, 'info'); }
+function printDim(t) { print(t, 'dim'); }
+function printErr(t) { print('✗ ' + t, 'err'); }
+function printBanner(t) { appendHtml(`<span class="banner">${esc(t)}</span>\n`); }
+
+function sum(a) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return s; }
+function loadImage(url) {
+  return new Promise((ok, no) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = () => no(new Error('图片加载失败'));
+    img.src = url;
+  });
+}
+
+function renderTop5(top5, labels) {
+  const max = top5[0]?.score || 1;
+  document.getElementById('top5').innerHTML = top5.map(({ i, score }, r) =>
+    `<li><strong>${r + 1}. ${labels[i] ?? i}</strong> ${(score * 100).toFixed(1)}%<div class="bar"><i style="width:${(score / max * 100).toFixed(0)}%"></i></div></li>`
+  ).join('');
+}
+
+function renderLesson() {
+  const s = STEPS[state.step];
+  document.getElementById('stepTag').textContent = `步骤 ${state.step} / ${STEPS.length - 1}${state.step === 0 ? '（总览）' : ''}`;
+  document.getElementById('lessonTitle').textContent = s.title;
+  document.getElementById('lessonSubtitle').textContent = s.subtitle || '';
+  document.getElementById('lessonGoal').innerHTML = `<strong>🎯 本步目标</strong>${s.goal}`;
+  document.getElementById('lessonWhy').innerHTML = `<strong>❓ 为什么要做</strong>${s.why}`;
+  document.getElementById('lessonBody').innerHTML = s.body;
+  document.getElementById('lessonTip').innerHTML = `<strong>💡 提示</strong> ${s.tip}`;
+
+  document.getElementById('pipelineMap').innerHTML = PIPELINE_LABELS.map((lb, i) => {
+    let cls = '';
+    if (i === state.step) cls = 'on';
+    else if (i < state.step || (i > 0 && state.done[i - 1])) cls = 'done';
+    if (state.step === 0 && i === 0) cls = 'on';
+    return `<span class="${cls}">${lb}</span>`;
+  }).join('');
+
+  document.getElementById('stepDots').innerHTML = STEPS.map((_, i) => {
+    let c = '';
+    if (state.done[i]) c = 'done';
+    if (i === state.step) c = 'active';
+    const nav = i <= maxNavStep() ? ' nav' : '';
+    const title = i <= maxNavStep()
+      ? `步骤 ${i}${state.done[i] ? '（已完成，点击回看）' : ''}`
+      : '尚未到达';
+    return `<span class="${c}${nav}" data-step="${i}" title="${title}">${i}</span>`;
+  }).join('');
+
+  document.getElementById('stepDots').querySelectorAll('[data-step]').forEach(el => {
+    el.onclick = () => goToStep(Number(el.dataset.step));
+  });
+
+  const isLast = state.step >= STEPS.length - 1;
+  const reviewing = state.done[state.step];
+  document.getElementById('btnPrev').disabled = state.step <= 0;
+  document.getElementById('btnNext').disabled = isLast || (state.step > 0 && !state.done[state.step]);
+  document.getElementById('btnNext').textContent = state.step === 0 ? '开始实验 →' : '下一步 →';
+  document.getElementById('btnAuto').disabled = state.step !== 0 && state.done.every(Boolean);
+  document.getElementById('btnRun').textContent = reviewing ? '↻ 重新执行本步' : (state.step === 0 ? '▶ 打印路线图' : '▶ 执行本步');
+  document.getElementById('progress').textContent = reviewing
+    ? (isLast ? '全部完成 🎉 · 可点圆点或「上一步」回顾任意步' : '本步已完成 · 可「上一步」或点圆点回看')
+    : (state.step === 0 ? '建议先读左侧，再点「打印路线图」' : '点击「执行本步」');
+}
+
+async function runCurrentStep() {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  print('');
+  printCmd(`:: 步骤 ${state.step} — ${STEPS[state.step].title}${state.done[state.step] ? '（重新执行）' : ''}`);
+  try {
+    await STEPS[state.step].run(state);
+    state.done[state.step] = true;
+    state.furthest = Math.max(state.furthest, state.step);
+  } catch (err) {
+    printErr(err.message);
+    printDim('需要: python -m http.server 8080 且 models/resnet18-v2-7.onnx 存在（运行 download.ps1）');
+  }
+  btn.disabled = false;
+  renderLesson();
+}
+
+function prevStep() {
+  if (state.step > 0) goToStep(state.step - 1);
+}
+
+function nextStep() {
+  if (state.step > 0 && !state.done[state.step]) return;
+  if (state.step < STEPS.length - 1) goToStep(state.step + 1, { force: true });
+}
+
+async function runAll() {
+  document.getElementById('btnAuto').disabled = true;
+  for (let i = state.step; i < STEPS.length; i++) {
+    state.step = i; renderLesson();
+    await runCurrentStep();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  document.getElementById('btnAuto').disabled = false;
+}
+
+document.getElementById('btnRun').onclick = runCurrentStep;
+document.getElementById('btnPrev').onclick = prevStep;
+document.getElementById('btnNext').onclick = nextStep;
+document.getElementById('btnAuto').onclick = runAll;
+document.getElementById('btnClear').onclick = () => {
+  bootTerminal();
+  state.step = 0; state.furthest = 0; state.done.fill(false);
+  state.session = null; state.image = null; state.inputTensor = null; state.outputMap = null;
+  state.labels = []; state.probs = null;
+  document.getElementById('top5').innerHTML = '';
+  canvas.hidden = true;
+  renderLesson();
+};
+
+bootTerminal();
+renderLesson();
+</script>
+</body>
+</html>

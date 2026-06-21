@@ -1,0 +1,174 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: system-ui, 'Segoe UI', 'PingFang SC', sans-serif;
+  background: #0a0c12;
+  color: #e6edf3;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  height: 100%;
+}
+
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+}
+
+.panel {
+  padding: 20px 18px;
+  overflow-y: auto;
+  border-right: 1px solid #21262d;
+  background: #0d1117;
+}
+
+.panel h1 {
+  font-size: 1.15rem;
+  color: #58a6ff;
+  margin-bottom: 8px;
+}
+
+.panel h2 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+  margin-bottom: 8px;
+}
+
+.panel section {
+  margin-top: 18px;
+}
+
+.lead {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #c9d1d9;
+}
+
+.panel ul,
+.panel ol {
+  padding-left: 1.2em;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: #c9d1d9;
+}
+
+.panel li {
+  margin: 6px 0;
+}
+
+.panel code {
+  font-family: Consolas, monospace;
+  font-size: 0.8em;
+  color: #ff79c6;
+  background: #161b22;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.hint {
+  padding: 10px 12px;
+  border-left: 3px solid #3fb950;
+  background: #161b22;
+  font-size: 0.82rem;
+  color: #8b949e;
+}
+
+.modes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.modes button {
+  text-align: left;
+  padding: 8px 12px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: #161b22;
+  color: #c9d1d9;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+.modes button.on {
+  border-color: #58a6ff;
+  background: #1a2332;
+  color: #58a6ff;
+}
+
+.mode-hint {
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #8b949e;
+}
+
+.lesson-active {
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+}
+
+.lesson-title {
+  font-size: 0.95rem;
+  color: #58a6ff;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.code-ref {
+  font-size: 0.78rem;
+  color: #6b7088;
+  margin-top: 10px;
+}
+
+.params {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin-top: 12px;
+  font-size: 0.78rem;
+  font-family: Consolas, monospace;
+}
+
+.params dt {
+  color: #8b949e;
+}
+
+.params dd {
+  color: #3fb950;
+  margin: 0;
+}
+
+.panel a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.canvas-wrap {
+  min-height: 320px;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.canvas-wrap canvas {
+  display: block;
+}

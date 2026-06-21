@@ -1,0 +1,999 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>i23DGS 项目讲解</title>
+  <style>
+    :root {
+      --ink: #111827;
+      --paper: #f6f4ee;
+      --panel: #ffffff;
+      --line: #d8d2c4;
+      --muted: #687385;
+      --teal: #087f73;
+      --amber: #d97706;
+      --coral: #d94841;
+      --blue: #315fbd;
+      --soft-teal: #e2f3ef;
+      --soft-amber: #fff1d8;
+      --soft-coral: #fde8e5;
+      --soft-blue: #e7edfb;
+      --mono: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+      --cn: "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #24211d;
+      color: var(--ink);
+      font-family: var(--cn);
+      letter-spacing: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+    }
+
+    .deck {
+      position: relative;
+      width: min(100vw, 177.78vh);
+      height: min(56.25vw, 100vh);
+      background: var(--paper);
+      overflow: hidden;
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.36);
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: none;
+      padding: 56px 68px 64px;
+      background:
+        linear-gradient(90deg, rgba(216, 210, 196, 0.44) 1px, transparent 1px) 0 0 / 64px 64px,
+        linear-gradient(180deg, rgba(216, 210, 196, 0.38) 1px, transparent 1px) 0 0 / 64px 64px,
+        var(--paper);
+    }
+
+    .slide.active {
+      display: block;
+    }
+
+    .chapter {
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 44px;
+      align-items: center;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 28px;
+      margin: 0 0 18px;
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .kicker::before {
+      content: "";
+      width: 26px;
+      height: 3px;
+      background: currentColor;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      max-width: 910px;
+      font-size: 68px;
+      line-height: 1.05;
+      font-weight: 900;
+    }
+
+    h2 {
+      max-width: 980px;
+      font-size: 44px;
+      line-height: 1.14;
+      font-weight: 880;
+    }
+
+    h3 {
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 840;
+    }
+
+    .lead {
+      max-width: 840px;
+      margin-top: 22px;
+      color: #344155;
+      font-size: 26px;
+      line-height: 1.55;
+      font-weight: 620;
+    }
+
+    .note,
+    li,
+    td {
+      color: #3f4b5f;
+      font-size: 20px;
+      line-height: 1.55;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      margin-top: 34px;
+    }
+
+    .three-col {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 30px;
+    }
+
+    .rail {
+      display: grid;
+      gap: 14px;
+      margin-top: 34px;
+    }
+
+    .panel {
+      min-height: 132px;
+      padding: 20px 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+    }
+
+    .panel.teal {
+      border-color: #9ccfc7;
+      background: var(--soft-teal);
+    }
+
+    .panel.amber {
+      border-color: #ecc57e;
+      background: var(--soft-amber);
+    }
+
+    .panel.coral {
+      border-color: #e7aaa5;
+      background: var(--soft-coral);
+    }
+
+    .panel.blue {
+      border-color: #b5c5ef;
+      background: var(--soft-blue);
+    }
+
+    .panel h3 {
+      margin-bottom: 10px;
+    }
+
+    .panel p,
+    .panel li {
+      font-size: 18px;
+      line-height: 1.5;
+    }
+
+    .hero-visual {
+      position: relative;
+      min-height: 480px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, #fdfbf6 0%, #e8f2ef 48%, #f9e4d3 100%);
+      overflow: hidden;
+    }
+
+    .hero-photo {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.92;
+      filter: saturate(0.9) contrast(1.02);
+    }
+
+    .hero-visual::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(246, 244, 238, 0.1), rgba(246, 244, 238, 0.72)),
+        radial-gradient(circle at 52% 48%, transparent 0 36%, rgba(246, 244, 238, 0.5) 68%);
+      pointer-events: none;
+    }
+
+    .product-shadow {
+      position: absolute;
+      left: 29%;
+      right: 20%;
+      bottom: 58px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(24, 28, 35, 0.18);
+      filter: blur(10px);
+    }
+
+    .splat-particle {
+      position: absolute;
+      width: var(--s);
+      height: var(--s);
+      left: var(--x);
+      top: var(--y);
+      border-radius: 50%;
+      background: rgba(var(--rgb), var(--a));
+      filter: blur(var(--b));
+      transform: translate(-50%, -50%);
+      z-index: 2;
+    }
+
+    .visual-label {
+      position: absolute;
+      left: 24px;
+      right: 24px;
+      bottom: 22px;
+      padding: 14px 16px;
+      border: 1px solid rgba(17, 24, 39, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+      color: #344155;
+      font-size: 17px;
+      line-height: 1.45;
+      z-index: 3;
+    }
+
+    .pipeline-map {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 34px;
+    }
+
+    .pipe {
+      position: relative;
+      min-height: 150px;
+      padding: 18px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .pipe:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      width: 10px;
+      height: 2px;
+      background: var(--teal);
+      transform: translateY(-50%);
+      z-index: 2;
+    }
+
+    .pipe strong {
+      display: block;
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 15px;
+      margin-bottom: 11px;
+    }
+
+    .pipe span {
+      display: block;
+      color: #3f4b5f;
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 18px;
+      margin-top: 30px;
+      align-items: stretch;
+    }
+
+    .lane {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .lane h3 {
+      margin-bottom: 16px;
+      color: var(--teal);
+    }
+
+    .module {
+      padding: 13px 14px;
+      margin-top: 10px;
+      border-left: 4px solid var(--teal);
+      background: #fff;
+      font-family: var(--mono);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .module.alt {
+      border-left-color: var(--amber);
+    }
+
+    .module.hot {
+      border-left-color: var(--coral);
+    }
+
+    .comparison {
+      width: 100%;
+      margin-top: 30px;
+      border-collapse: collapse;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .comparison th {
+      padding: 14px 16px;
+      text-align: left;
+      color: var(--ink);
+      background: #ebe5d8;
+      font-size: 16px;
+    }
+
+    .comparison td {
+      padding: 16px;
+      border-top: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    .comparison td:first-child {
+      width: 24%;
+      color: var(--teal);
+      font-weight: 800;
+    }
+
+    .state-line {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      margin-top: 34px;
+    }
+
+    .state {
+      min-height: 96px;
+      display: grid;
+      place-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 800;
+      color: #344155;
+    }
+
+    .state:nth-child(2),
+    .state:nth-child(4) {
+      background: var(--soft-amber);
+    }
+
+    .state:nth-child(6) {
+      background: var(--soft-coral);
+    }
+
+    .code {
+      margin-top: 28px;
+      padding: 20px 22px;
+      border: 1px solid #2f3746;
+      border-radius: 8px;
+      background: #101722;
+      color: #edf2f7;
+      font-family: var(--mono);
+      font-size: 17px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .code .muted-code {
+      color: #93a4b8;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: #344155;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 760;
+    }
+
+    .metric-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 32px;
+    }
+
+    .metric {
+      padding: 18px;
+      border-top: 5px solid var(--teal);
+      background: #fff;
+    }
+
+    .metric:nth-child(2) {
+      border-top-color: var(--amber);
+    }
+
+    .metric:nth-child(3) {
+      border-top-color: var(--blue);
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--ink);
+      font-size: 36px;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .metric span {
+      color: #3f4b5f;
+      font-size: 17px;
+      line-height: 1.45;
+    }
+
+    .demo-script {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 22px;
+      margin-top: 30px;
+    }
+
+    .steps {
+      margin: 0;
+      padding-left: 26px;
+    }
+
+    .steps li {
+      margin: 12px 0;
+      padding-left: 6px;
+    }
+
+    .footer {
+      position: absolute;
+      left: 68px;
+      right: 68px;
+      bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: #6f7785;
+      font-family: var(--mono);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .pager {
+      position: fixed;
+      right: 22px;
+      bottom: 18px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #f8f5ed;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .pager button {
+      width: 34px;
+      height: 30px;
+      border: 1px solid rgba(248, 245, 237, 0.32);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.2);
+      color: #f8f5ed;
+      cursor: pointer;
+    }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      z-index: 11;
+    }
+
+    .progress i {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--teal), var(--amber), var(--coral));
+      transition: width 160ms ease;
+    }
+
+    a {
+      color: var(--teal);
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    code {
+      padding: 1px 7px;
+      border-radius: 6px;
+      background: rgba(17, 24, 39, 0.08);
+      font-family: var(--mono);
+      font-size: 0.86em;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        display: block;
+        overflow: auto;
+        background: var(--paper);
+      }
+
+      .deck {
+        width: 100%;
+        height: auto;
+        box-shadow: none;
+      }
+
+      .slide,
+      .slide.active {
+        position: relative;
+        display: block;
+        min-height: 100vh;
+        padding: 34px 24px 64px;
+      }
+
+      h1 {
+        font-size: 42px;
+      }
+
+      h2 {
+        font-size: 32px;
+      }
+
+      .lead {
+        font-size: 21px;
+      }
+
+      .chapter,
+      .two-col,
+      .three-col,
+      .architecture,
+      .pipeline-map,
+      .state-line,
+      .metric-strip,
+      .demo-script {
+        grid-template-columns: 1fr;
+      }
+
+      .pipe::after {
+        display: none;
+      }
+
+      .pager,
+      .progress {
+        display: none;
+      }
+
+      .footer {
+        left: 24px;
+        right: 24px;
+      }
+    }
+
+    @media print {
+      html,
+      body {
+        overflow: visible;
+        background: #fff;
+      }
+
+      body {
+        display: block;
+      }
+
+      .deck {
+        width: 100%;
+        height: auto;
+        box-shadow: none;
+      }
+
+      .slide,
+      .slide.active {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 100vh;
+        page-break-after: always;
+      }
+
+      .pager,
+      .progress {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="i23DGS 项目讲解幻灯片">
+    <section class="slide active chapter">
+      <div>
+        <p class="kicker">i23DGS / image to 3D gaussian splatting</p>
+        <h1>把一张商品图接进可演示的 3DGS 工程流水线</h1>
+        <p class="lead">这不是“论文训练器”，而是一个前端工程师能完整跑通的实验工作台：上传图片、自动抠图、生成或接入高斯模型，再在浏览器里查看、运镜和录制。</p>
+        <div class="badge-row">
+          <span class="badge">React + Three.js</span>
+          <span class="badge">Node TypeScript API</span>
+          <span class="badge">Python rembg</span>
+          <span class="badge">.splat / .ksplat / .ply</span>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="商品高斯示意">
+        <img class="hero-photo" src="./public/sample/black-headphones-unsplash.jpg" alt="黑色头戴耳机商品图" />
+        <span class="splat-particle" style="--x: 50%; --y: 20%; --s: 58px; --rgb: 28,38,46; --a: .72; --b: 2px"></span>
+        <span class="splat-particle" style="--x: 42%; --y: 34%; --s: 145px; --rgb: 36,45,54; --a: .78; --b: 5px"></span>
+        <span class="splat-particle" style="--x: 60%; --y: 35%; --s: 116px; --rgb: 41,55,66; --a: .68; --b: 5px"></span>
+        <span class="splat-particle" style="--x: 35%; --y: 56%; --s: 130px; --rgb: 10,127,115; --a: .44; --b: 6px"></span>
+        <span class="splat-particle" style="--x: 64%; --y: 57%; --s: 150px; --rgb: 217,119,6; --a: .34; --b: 8px"></span>
+        <span class="splat-particle" style="--x: 52%; --y: 61%; --s: 82px; --rgb: 255,255,255; --a: .66; --b: 3px"></span>
+        <span class="product-shadow"></span>
+        <p class="visual-label">主样例选用黑色头戴耳机：主体清晰、材质高级、结构有弧线和厚度，适合展示从商品图到高斯资产的完整链路。</p>
+      </div>
+      <div class="footer"><span>gaussian-splat/2026-06-14-i23dgs-pipeline/slides.html</span><span>01</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Thesis</p>
+      <h2>项目价值在于打通链路，而不是假装本地脚本已经等于工业级 3D 重建。</h2>
+      <div class="three-col">
+        <article class="panel teal">
+          <h3>给前端的价值</h3>
+          <p>从图片输入到 WebGL/Three.js 展示全链路可控，便于验证交互、加载、录制和资产管理。</p>
+        </article>
+        <article class="panel amber">
+          <h3>给 AI 流水线的价值</h3>
+          <p>Provider 接口已经抽象出来，本地 baseline 与远端工业模型可以复用同一套前后端状态机。</p>
+        </article>
+        <article class="panel blue">
+          <h3>给产品演示的价值</h3>
+          <p>可上传商品图，可加载真实样例模型，也可把相机动画录成 WebM，用于快速说明效果边界。</p>
+        </article>
+      </div>
+      <p class="lead">一句话：i23DGS 是“商品 3D 资产生成”的工程骨架，先把每个接口、状态和前端体验跑顺，再替换更强的 3DGS Provider。</p>
+      <div class="footer"><span>定位：工程桥，而不是最终模型能力声明</span><span>02</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Pipeline</p>
+      <h2>主流程是五段：上传、抠图、生成、加载、录制。</h2>
+      <div class="pipeline-map">
+        <div class="pipe">
+          <strong>01 Upload</strong>
+          <span>用户选择商品图，API 保存到 <code>data/uploads</code> 并创建 job。</span>
+        </div>
+        <div class="pipe">
+          <strong>02 Matting</strong>
+          <span>Node 调 Python <code>rembg</code>，输出透明主体 PNG。</span>
+        </div>
+        <div class="pipe">
+          <strong>03 Provider</strong>
+          <span>本地脚本生成 2.5D .splat，或切到远端 AI 服务。</span>
+        </div>
+        <div class="pipe">
+          <strong>04 Viewer</strong>
+          <span>Three.js + GaussianSplats3D 加载模型并重置相机。</span>
+        </div>
+        <div class="pipe">
+          <strong>05 Record</strong>
+          <span>相机绕物体中心运动，Canvas MediaRecorder 导出 WebM。</span>
+        </div>
+      </div>
+      <div class="code"><span class="muted-code">运行：</span>npm install
+npm run mock:splat
+npm run dev</div>
+      <div class="footer"><span>从“文件上传”到“可分享视频”的最短闭环</span><span>03</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Architecture</p>
+      <h2>代码分成三条清晰的工作线：客户端、API 服务、生成脚本。</h2>
+      <div class="architecture">
+        <div class="lane">
+          <h3>Client</h3>
+          <div class="module">src/client/App.tsx</div>
+          <div class="module">components/PipelinePanel.tsx</div>
+          <div class="module">gaussian/GaussianStage.ts</div>
+          <div class="module alt">recording/media-recorder.ts</div>
+        </div>
+        <div class="lane">
+          <h3>Server</h3>
+          <div class="module">src/server/routes/jobs.ts</div>
+          <div class="module">services/job-store.ts</div>
+          <div class="module alt">services/matting-service.ts</div>
+          <div class="module hot">services/gaussian-service.ts</div>
+        </div>
+        <div class="lane">
+          <h3>Scripts / Data</h3>
+          <div class="module alt">scripts/rembg_matting.py</div>
+          <div class="module hot">scripts/image_to_splat.py</div>
+          <div class="module">data/uploads · data/matted</div>
+          <div class="module">data/models · public/sample</div>
+        </div>
+      </div>
+      <p class="lead">这个拆法的好处是：AI 能力换供应商时，前端交互和 job 状态不需要重写。</p>
+      <div class="footer"><span>Provider 是项目后续扩展的关键边界</span><span>04</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">State Machine</p>
+      <h2>UI 不猜结果，只追踪 job 的阶段变化。</h2>
+      <div class="state-line">
+        <div class="state">uploaded<br />已上传</div>
+        <div class="state">matting<br />抠图中</div>
+        <div class="state">matted<br />主体已提取</div>
+        <div class="state">generating<br />生成中</div>
+        <div class="state">ready<br />模型就绪</div>
+        <div class="state">failed<br />失败</div>
+      </div>
+      <div class="two-col">
+        <article class="panel">
+          <h3>后端负责推进状态</h3>
+          <p><code>POST /jobs</code> 立刻返回 202，抠图后台继续跑；前端轮询 <code>GET /jobs/:id</code> 更新阶段。</p>
+        </article>
+        <article class="panel">
+          <h3>前端负责表达状态</h3>
+          <p>按钮是否可用、状态文案、资源链接和模型加载，都由同一个 <code>PipelineJob</code> 驱动。</p>
+        </article>
+      </div>
+      <div class="footer"><span>异步任务要可解释，演示时才不会像“按钮点了没反应”</span><span>05</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Provider Boundary</p>
+      <h2>本地 baseline 与远端 Provider 共用同一个接口。</h2>
+      <div class="two-col">
+        <article class="panel teal">
+          <h3>mock-local</h3>
+          <p>调用 <code>scripts/image_to_splat.py</code>，从透明 PNG 的像素采样出一份真实可加载的 <code>.splat</code> 文件。</p>
+          <p class="small">适合验证工程链路、前端加载、动画导出和 UI 反馈。</p>
+        </article>
+        <article class="panel coral">
+          <h3>remote-api</h3>
+          <p>把透明 PNG 作为 <code>image/png</code> 请求体发给外部模型服务，返回 <code>.splat</code> 或 <code>.ply</code>。</p>
+          <p class="small">适合接商业 3D API、LGM/TripoSR 类模型或自建多视图生成服务。</p>
+        </article>
+      </div>
+      <div class="code"><span class="muted-code">远端配置：</span>$env:I23DGS_AI_ENDPOINT="https://your-provider.example.com/i23dgs"
+$env:I23DGS_AI_KEY="..."</div>
+      <div class="footer"><span>抽象边界：generate(inputPngPath, jobId) => outputPath + format</span><span>06</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Quality Truth</p>
+      <h2>要讲清楚三种“看起来像 3D”的东西，不然很容易误会。</h2>
+      <table class="comparison">
+        <thead>
+          <tr>
+            <th>类型</th>
+            <th>输入</th>
+            <th>真实能力</th>
+            <th>在项目中的角色</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>本地图像高斯 baseline</td>
+            <td>单张透明 PNG</td>
+            <td>把图像像素变成带浅层深度的 splats，能旋转但背面信息不是真重建。</td>
+            <td>跑通文件、状态、Viewer、录制和 Provider 接口。</td>
+          </tr>
+          <tr>
+            <td>真实 3DGS 场景</td>
+            <td>多图或视频抽帧</td>
+            <td>通过相机位姿、点云初始化和高斯优化重建空间。</td>
+            <td>通过官方样例 <code>.ksplat</code> 验证加载与交互质量。</td>
+          </tr>
+          <tr>
+            <td>单图转 3D AI</td>
+            <td>一张商品图</td>
+            <td>模型推断不可见面，再输出 mesh、Gaussian 或其他 3D 表示。</td>
+            <td>未来替换 remote Provider 的主要方向。</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="footer"><span>边界说清楚，项目可信度会上升</span><span>07</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Viewer Experience</p>
+      <h2>前端不是只“显示模型”，而是在构建可讲故事的商品展示台。</h2>
+      <div class="metric-strip">
+        <div class="metric">
+          <strong>3</strong>
+          <span>支持 <code>.splat</code>、<code>.ply</code>、<code>.ksplat</code> 三类模型输入。</span>
+        </div>
+        <div class="metric">
+          <strong>7.2s</strong>
+          <span>默认相机轨道动画时长，围绕当前模型中心播放一圈。</span>
+        </div>
+        <div class="metric">
+          <strong>WebM</strong>
+          <span>直接录制 Canvas 输出，方便把交互结果变成可分享视频。</span>
+        </div>
+      </div>
+      <div class="rail">
+        <article class="panel">
+          <h3>体验闭环</h3>
+          <p>加载默认耳机、上传商品图、选择真实场景、拖入外部模型、播放运镜、录制结果，这些动作覆盖了商品 3D 展示最常见的演示路径。</p>
+        </article>
+      </div>
+      <div class="footer"><span>演示重点：从模型能力，转成“前端可消费的内容资产”</span><span>08</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Demo Talk Track</p>
+      <h2>现场讲解可以按“先可信、再惊喜、最后扩展”的顺序走。</h2>
+      <div class="demo-script">
+        <article class="panel amber">
+          <h3>建议演示顺序</h3>
+          <ol class="steps">
+            <li>打开默认耳机，说明 Viewer 和相机控制。</li>
+            <li>上传一张商品图，展示 job 进入抠图。</li>
+            <li>查看透明 PNG，说明主体提取。</li>
+            <li>点“本地图像高斯”，加载 baseline .splat。</li>
+            <li>播放运镜并录制 WebM。</li>
+            <li>切换真实 3DGS 样例，强调未来 Provider 接入空间。</li>
+          </ol>
+        </article>
+        <article class="panel teal">
+          <h3>推荐话术</h3>
+          <p>“本地版本解决的是工程闭环，不负责承诺工业建模质量。真正上线时，把 Provider 换成多图/单图 3D 服务，前端、API、状态机和录制工作流都可以保留。”</p>
+          <p class="small">这句话能同时保护项目边界，也能让听众看到它的可扩展价值。</p>
+        </article>
+      </div>
+      <div class="footer"><span>演示不是炫技，是管理预期</span><span>09</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Next Steps</p>
+      <h2>下一阶段的重点，是把“可跑通”推进到“可评估、可替换、可规模化”。</h2>
+      <div class="three-col">
+        <article class="panel teal">
+          <h3>接真 Provider</h3>
+          <p>定义远端响应规范、失败重试、进度回传和模型格式协商。</p>
+        </article>
+        <article class="panel amber">
+          <h3>质量评估</h3>
+          <p>增加预览截图、splat 数量、文件体积、加载耗时和录制帧率等指标。</p>
+        </article>
+        <article class="panel blue">
+          <h3>资产管理</h3>
+          <p>把一次 job 的原图、透明 PNG、模型和导出视频归档成可复用商品资产。</p>
+        </article>
+      </div>
+      <p class="lead">当这些补齐后，i23DGS 就从实验工作台变成“商品 3D 内容生产链路”的雏形。</p>
+      <div class="footer"><span>下一步：让模型能力成为可插拔组件</span><span>10</span></div>
+    </section>
+
+    <section class="slide">
+      <p class="kicker">Close</p>
+      <h2>i23DGS 的核心结论：先把 3D AI 变成前端能稳定消费的流水线。</h2>
+      <div class="two-col">
+        <article class="panel">
+          <h3>今天已经完成</h3>
+          <p>上传、抠图、生成接口、模型加载、真实样例、相机动画、WebM 录制。</p>
+        </article>
+        <article class="panel coral">
+          <h3>真正要替换的部分</h3>
+          <p>不是前端工作台，而是 Provider 背后的生成质量：从本地 2.5D baseline 升级为工业 3DGS/3D AI 服务。</p>
+        </article>
+      </div>
+      <div class="code">Live Demo: <a href="./index.html">./index.html</a>
+Project README: <a href="./README.md">./README.md</a></div>
+      <div class="footer"><span>按 P 进入打印模式，可导出 PDF</span><span>11</span></div>
+    </section>
+  </main>
+
+  <nav class="pager" aria-label="幻灯片导航">
+    <button id="prev" type="button" aria-label="上一页">‹</button>
+    <span id="pageText">1 / 11</span>
+    <button id="next" type="button" aria-label="下一页">›</button>
+  </nav>
+  <div class="progress" aria-hidden="true"><i id="progressBar"></i></div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const pageText = document.getElementById("pageText");
+    const progressBar = document.getElementById("progressBar");
+    const prev = document.getElementById("prev");
+    const next = document.getElementById("next");
+    let index = 0;
+
+    function show(nextIndex) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, i) => {
+        slide.classList.toggle("active", i === index);
+      });
+      pageText.textContent = `${index + 1} / ${slides.length}`;
+      progressBar.style.width = `${((index + 1) / slides.length) * 100}%`;
+      history.replaceState(null, "", `#${index + 1}`);
+    }
+
+    function step(delta) {
+      show(index + delta);
+    }
+
+    prev.addEventListener("click", () => step(-1));
+    next.addEventListener("click", () => step(1));
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowRight" || event.key === " " || event.key === "PageDown") {
+        event.preventDefault();
+        step(1);
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault();
+        step(-1);
+      }
+      if (event.key.toLowerCase() === "p") {
+        window.print();
+      }
+    });
+
+    const initial = Number.parseInt(location.hash.replace("#", ""), 10);
+    show(Number.isFinite(initial) ? initial - 1 : 0);
+  </script>
+</body>
+</html>

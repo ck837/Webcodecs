@@ -42,8 +42,9 @@
   <div class="bar">
     <button id="btnRun">▶ 模拟运行</button>
     <button id="btnReset">↺ 重置</button>
+    <a href="./lab.html" style="margin-left:auto;color:var(--accent);font-size:13px;text-decoration:none;align-self:center">交互实验课 →</a>
   </div>
-  <p class="hint">数据来自 <code>output/topology.json</code> — 先运行 <code>python visual_agent.py</code></p>
+  <p class="hint">数据来自 <code>output/topology.json</code> · trace 来自 <code>output/trace.json</code> — 先运行 <code>python visual_agent.py</code></p>
   <div class="layout">
     <div id="wrap"><canvas id="c"></canvas></div>
     <aside>
@@ -61,6 +62,7 @@ const nodeListEl = document.getElementById('nodeList');
 const logEl = document.getElementById('log');
 
 let topo = null;
+let traceData = null;
 let layout = {};
 let particle = { t: 0, edge: null, path: [] };
 let activeNode = null;
@@ -95,6 +97,10 @@ async function loadTopo() {
       ],
     };
   }
+  try {
+    const tr = await fetch('output/trace.json');
+    if (tr.ok) traceData = await tr.json();
+  } catch { traceData = null; }
   buildSidebar();
   resize();
 }
@@ -270,17 +276,30 @@ async function simulateRun() {
   if (running) return;
   running = true;
   logEl.innerHTML = '';
-  log('START → 模拟 Agent 3 轮循环后 exit');
+  log(traceData ? 'START → 使用 Python trace.json 回放' : 'START → 内置模拟 3 轮循环');
 
-  const path = [
-    { edge: { from: '__start__', to: 'generator' }, node: 'generator', msg: 'generator: 生成代码' },
-    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 排查 Bug' },
-    { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 回流 (Bug)' },
-    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 再查' },
-    { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 再回流' },
-    { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 通过' },
-    { edge: { from: 'evaluator', to: '__end__' }, node: '__end__', msg: 'exit → END' },
-  ];
+  let path;
+  if (traceData?.steps?.length) {
+    path = traceData.steps.map(s => ({
+      edge: {
+        from: s.from,
+        to: s.to,
+        conditional: s.from === 'evaluator' && s.to === 'generator',
+      },
+      node: s.node,
+      msg: s.node === '__end__' ? 'exit → END' : `${s.node}: ${JSON.stringify(s.update || {})}`,
+    }));
+  } else {
+    path = [
+      { edge: { from: '__start__', to: 'generator' }, node: 'generator', msg: 'generator: 生成代码' },
+      { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 排查 Bug' },
+      { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 回流 (Bug)' },
+      { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 再查' },
+      { edge: { from: 'evaluator', to: 'generator', conditional: true }, node: 'generator', msg: 'continue → 再回流' },
+      { edge: { from: 'generator', to: 'evaluator' }, node: 'evaluator', msg: 'evaluator: 通过' },
+      { edge: { from: 'evaluator', to: '__end__' }, node: '__end__', msg: 'exit → END' },
+    ];
+  }
 
   for (const step of path) {
     setActive(step.node);

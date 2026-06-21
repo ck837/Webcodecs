@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UI → 3D 高斯场 · Agent 多模态检查 MVP</title>
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{overflow:hidden;width:100%;height:100%;background:#07080c;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color:#e2e8f0}
+#c{display:block;width:100%;height:100%;touch-action:none}
+
+#hud{
+  position:fixed;inset:0;pointer-events:none;z-index:10;
+}
+#title{
+  position:absolute;top:16px;left:16px;max-width:min(420px,90vw);
+  padding:14px 16px;border-radius:12px;
+  background:rgba(8,12,22,.82);border:1px solid rgba(103,232,249,.22);
+  backdrop-filter:blur(10px);box-shadow:0 8px 32px rgba(0,0,0,.45);
+}
+#title h1{font-size:15px;font-weight:800;color:#67e8f9;letter-spacing:.04em}
+#title p{margin-top:6px;font-size:12px;line-height:1.55;color:#94a3b8}
+
+#inspect{
+  position:absolute;top:16px;right:16px;min-width:240px;max-width:320px;
+  padding:14px 16px;border-radius:12px;
+  background:rgba(8,12,22,.88);border:1px solid rgba(251,113,133,.35);
+  backdrop-filter:blur(10px);opacity:0;transform:translateY(-6px);
+  transition:opacity .2s ease,transform .2s ease;
+}
+#inspect.show{opacity:1;transform:translateY(0)}
+#inspect .tag{
+  display:inline-block;padding:2px 8px;border-radius:999px;
+  font-size:10px;font-weight:800;letter-spacing:.08em;
+  background:rgba(251,113,133,.18);color:#fda4af;margin-bottom:8px;
+}
+#inspect h2{font-size:18px;font-weight:800;color:#fff;margin-bottom:8px}
+#inspect dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px}
+#inspect dt{color:#64748b;font-weight:600}
+#inspect dd{color:#f1f5f9;font-variant-numeric:tabular-nums}
+#inspect .warn{
+  margin-top:10px;padding:8px 10px;border-radius:8px;
+  background:rgba(239,68,68,.12);border:1px solid rgba(248,113,113,.35);
+  color:#fecaca;font-size:11px;line-height:1.45;
+}
+
+#legend{
+  position:absolute;bottom:16px;left:16px;
+  padding:12px 14px;border-radius:10px;
+  background:rgba(8,12,22,.78);border:1px solid rgba(255,255,255,.08);
+  font-size:11px;line-height:1.6;color:#94a3b8;
+}
+#legend .bar{
+  width:140px;height:8px;border-radius:999px;margin:6px 0 4px;
+  background:linear-gradient(90deg,#22d3ee,#34d399,#fbbf24,#ef4444);
+}
+#legend kbd{
+  padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.08);
+  font:10px ui-monospace,Consolas,monospace;color:#cbd5e1;
+}
+
+#hint{
+  position:absolute;bottom:16px;right:16px;
+  font-size:11px;color:#64748b;text-align:right;line-height:1.5;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div id="title">
+    <h1>UI → 3D Gaussian Field</h1>
+    <p>将 2D DOM 映射为高斯叠加场。热区冲突时加法混合会过曝混色，暴露 Agent 多模态检查中的遮挡与点击层 Bug。</p>
+  </div>
+  <div id="inspect">
+    <div class="tag">HOVER NODE</div>
+    <h2 id="inTag">—</h2>
+    <dl>
+      <dt>2D Box</dt><dd id="inBox">—</dd>
+      <dt>Stack Z</dt><dd id="inZ">—</dd>
+      <dt>Clickable</dt><dd id="inClick">—</dd>
+      <dt>Hot Radius</dt><dd id="inHot">—</dd>
+      <dt>Repaint Freq</dt><dd id="inFreq">—</dd>
+      <dt>Opacity</dt><dd id="inOp">—</dd>
+    </dl>
+    <div class="warn" id="inWarn" hidden></div>
+  </div>
+  <div id="legend">
+    重绘频率 → 颜色能量
+    <div class="bar"></div>
+    低能静态 <span style="float:right">高能动态</span>
+    <div style="margin-top:8px"><kbd>拖拽</kbd> 旋转 · <kbd>滚轮</kbd> 缩放 · <kbd>右键</kbd> 平移</div>
+  </div>
+  <div id="hint">AdditiveBlending · depthWrite off<br>重叠热区 = 亮度融合告警</div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ─── 1. Mock DOM 树（真实网页结构特征） ─── */
+const PAGE = { w: 1280, h: 800 };
+
+/** @typedef {{ id:string, tagName:string, x:number, y:number, w:number, h:number, z:number, isClickable:boolean, changeFrequency:number }} DomNode */
+
+/** @type {DomNode[]} */
+const MOCK_DOM = [
+  { id: 'body', tagName: 'BODY', x: 0, y: 0, w: 1280, h: 800, z: 0, isClickable: false, changeFrequency: 3 },
+  { id: 'header', tagName: 'HEADER', x: 0, y: 0, w: 1280, h: 64, z: 10, isClickable: false, changeFrequency: 12 },
+  { id: 'logo', tagName: 'A', x: 24, y: 16, w: 120, h: 32, z: 20, isClickable: true, changeFrequency: 8 },
+  { id: 'nav-home', tagName: 'BUTTON', x: 420, y: 14, w: 88, h: 36, z: 20, isClickable: true, changeFrequency: 5 },
+  { id: 'nav-pricing', tagName: 'BUTTON', x: 520, y: 14, w: 88, h: 36, z: 20, isClickable: true, changeFrequency: 5 },
+  { id: 'nav-docs', tagName: 'BUTTON', x: 620, y: 14, w: 88, h: 36, z: 20, isClickable: true, changeFrequency: 5 },
+  { id: 'cta-header', tagName: 'BUTTON', x: 1120, y: 12, w: 136, h: 40, z: 25, isClickable: true, changeFrequency: 22 },
+  { id: 'sidebar', tagName: 'ASIDE', x: 0, y: 64, w: 240, h: 736, z: 8, isClickable: false, changeFrequency: 6 },
+  { id: 'nav-item-1', tagName: 'A', x: 12, y: 88, w: 216, h: 40, z: 18, isClickable: true, changeFrequency: 4 },
+  { id: 'nav-item-2', tagName: 'A', x: 12, y: 136, w: 216, h: 40, z: 18, isClickable: true, changeFrequency: 4 },
+  { id: 'nav-item-3', tagName: 'A', x: 12, y: 184, w: 216, h: 40, z: 18, isClickable: true, changeFrequency: 4 },
+  { id: 'main', tagName: 'MAIN', x: 240, y: 64, w: 1040, h: 736, z: 5, isClickable: false, changeFrequency: 18 },
+  { id: 'hero', tagName: 'SECTION', x: 272, y: 96, w: 976, h: 220, z: 12, isClickable: false, changeFrequency: 35 },
+  { id: 'hero-title', tagName: 'H1', x: 300, y: 120, w: 520, h: 48, z: 15, isClickable: false, changeFrequency: 28 },
+  { id: 'hero-cta', tagName: 'BUTTON', x: 300, y: 200, w: 160, h: 44, z: 22, isClickable: true, changeFrequency: 45 },
+  { id: 'hero-ghost', tagName: 'BUTTON', x: 472, y: 200, w: 160, h: 44, z: 22, isClickable: true, changeFrequency: 40 },
+  { id: 'card-grid', tagName: 'DIV', x: 272, y: 340, w: 976, h: 280, z: 10, isClickable: false, changeFrequency: 20 },
+  { id: 'card-1', tagName: 'ARTICLE', x: 288, y: 356, w: 300, h: 240, z: 14, isClickable: false, changeFrequency: 15 },
+  { id: 'card-1-btn', tagName: 'BUTTON', x: 308, y: 540, w: 120, h: 36, z: 28, isClickable: true, changeFrequency: 55 },
+  { id: 'card-2', tagName: 'ARTICLE', x: 608, y: 356, w: 300, h: 240, z: 14, isClickable: false, changeFrequency: 15 },
+  { id: 'card-2-btn', tagName: 'BUTTON', x: 628, y: 540, w: 120, h: 36, z: 28, isClickable: true, changeFrequency: 52 },
+  { id: 'card-3', tagName: 'ARTICLE', x: 928, y: 356, w: 300, h: 240, z: 14, isClickable: false, changeFrequency: 15 },
+  { id: 'card-3-btn', tagName: 'BUTTON', x: 948, y: 540, w: 120, h: 36, z: 28, isClickable: true, changeFrequency: 50 },
+  /* 故意制造热区冲突：与 card-2-btn 重叠 */
+  { id: 'bug-overlay', tagName: 'DIV', x: 600, y: 520, w: 180, h: 72, z: 32, isClickable: true, changeFrequency: 92 },
+  { id: 'modal', tagName: 'DIV', x: 340, y: 180, w: 600, h: 360, z: 40, isClickable: false, changeFrequency: 78 },
+  { id: 'modal-close', tagName: 'BUTTON', x: 880, y: 196, w: 44, h: 44, z: 45, isClickable: true, changeFrequency: 65 },
+  { id: 'modal-confirm', tagName: 'BUTTON', x: 560, y: 480, w: 160, h: 44, z: 45, isClickable: true, changeFrequency: 70 },
+  { id: 'toast', tagName: 'DIV', x: 920, y: 680, w: 320, h: 56, z: 50, isClickable: true, changeFrequency: 88 },
+  { id: 'footer', tagName: 'FOOTER', x: 0, y: 736, w: 1280, h: 64, z: 6, isClickable: false, changeFrequency: 2 },
+];
+
+/* ─── 2. 工具：频率 → 颜色 / 热区 ─── */
+const HOT_SCALE = 1.3;
+
+function freqToColor(t) {
+  const u = THREE.MathUtils.clamp(t / 100, 0, 1);
+  const color = new THREE.Color();
+  if (u < 0.5) color.lerpColors(new THREE.Color(0x22d3ee), new THREE.Color(0x34d399), u * 2);
+  else color.lerpColors(new THREE.Color(0x34d399), new THREE.Color(0xef4444), (u - 0.5) * 2);
+  return color;
+}
+
+function webToWorld(node) {
+  const cx = (node.x + node.w / 2 - PAGE.w / 2) * 0.01;
+  const cy = (-(node.y + node.h / 2) + PAGE.h / 2) * 0.01;
+  const cz = node.z * 0.055;
+  return new THREE.Vector3(cx, cy, cz);
+}
+
+function hotRadius(node) {
+  const sx = node.w * (node.isClickable ? HOT_SCALE : 1);
+  const sy = node.h * (node.isClickable ? HOT_SCALE : 1);
+  return Math.sqrt(sx * sx + sy * sy) * 0.005;
+}
+
+/* ─── 3. 动态生成二维高斯径向贴图 e^(-r²) ─── */
+function createGaussianTexture(size = 256) {
+  const data = new Uint8Array(size * size * 4);
+  const half = size / 2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const nx = (x - half) / half;
+      const ny = (y - half) / half;
+      const r2 = nx * nx + ny * ny;
+      const a = Math.exp(-r2 * 2.8);
+      const i = (y * size + x) * 4;
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = Math.min(255, (a * 255) | 0);
+    }
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/* ─── 4. 高斯场 Sprite 工厂 ─── */
+const gaussTex = createGaussianTexture(256);
+
+/**
+ * @param {DomNode} node
+ * @returns {{ sprite: THREE.Sprite, pick: THREE.Mesh, meta: DomNode & { hotW:number, hotH:number, opacity:number } }}
+ */
+function createGaussianNode(node) {
+  const hotMul = node.isClickable ? HOT_SCALE : 1;
+  const opacity = node.isClickable ? 0.8 : 0.4;
+  const color = freqToColor(node.changeFrequency);
+
+  const mat = new THREE.SpriteMaterial({
+    map: gaussTex,
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: true,
+  });
+
+  const sprite = new THREE.Sprite(mat);
+  const pos = webToWorld(node);
+  sprite.position.copy(pos);
+
+  const sx = node.w * hotMul * 0.01;
+  const sy = node.h * hotMul * 0.01;
+  sprite.scale.set(sx, sy, 1);
+  sprite.center.set(0.5, 0.5);
+  sprite.renderOrder = node.z;
+
+  const pickGeo = new THREE.PlaneGeometry(sx, sy);
+  const pickMat = new THREE.MeshBasicMaterial({ visible: false });
+  const pick = new THREE.Mesh(pickGeo, pickMat);
+  pick.position.copy(pos);
+  pick.userData.meta = {
+    ...node,
+    hotW: node.w * hotMul,
+    hotH: node.h * hotMul,
+    opacity,
+    color,
+  };
+  pick.userData.sprite = sprite;
+
+  return { sprite, pick, meta: pick.userData.meta };
+}
+
+/* ─── 5. 场景初始化 ─── */
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x07080c, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x07080c, 0.08);
+
+const camera = new THREE.PerspectiveCamera(48, innerWidth / innerHeight, 0.01, 100);
+camera.position.set(4.8, 2.2, 6.8);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.target.set(0, 0, 0.6);
+controls.maxPolarAngle = Math.PI * 0.85;
+controls.minDistance = 2;
+controls.maxDistance = 22;
+controls.update();
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+const key = new THREE.DirectionalLight(0xffffff, 0.25);
+key.position.set(4, 8, 2);
+scene.add(key);
+
+/* 2D 物理地面网格（XZ 平面，页面竖立在 XY） */
+const floor = new THREE.GridHelper(14, 28, 0x1e293b, 0x111827);
+floor.rotation.x = Math.PI / 2;
+floor.position.z = -0.05;
+floor.material.transparent = true;
+floor.material.opacity = 0.35;
+scene.add(floor);
+
+const pageFrame = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.PlaneGeometry(PAGE.w * 0.01, PAGE.h * 0.01)),
+  new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.55 })
+);
+pageFrame.position.z = 0.001;
+scene.add(pageFrame);
+
+/* 构建所有高斯节点 */
+const fieldGroup = new THREE.Group();
+const pickables = [];
+/** @type {Map<THREE.Object3D, object>} */
+const metaByPick = new Map();
+/** @type {THREE.Sprite[]} */
+const sprites = [];
+
+for (const node of MOCK_DOM) {
+  if (node.tagName === 'BODY') continue;
+  const { sprite, pick, meta } = createGaussianNode(node);
+  fieldGroup.add(sprite);
+  sprites.push(sprite);
+  scene.add(pick);
+  pickables.push(pick);
+  metaByPick.set(pick, meta);
+}
+scene.add(fieldGroup);
+
+/* 冲突检测：AABB 热区重叠 */
+function detectHotspotConflicts() {
+  const clickables = MOCK_DOM.filter((n) => n.isClickable && n.tagName !== 'BODY');
+  /** @type {Set<string>} */
+  const conflictIds = new Set();
+  for (let i = 0; i < clickables.length; i++) {
+    for (let j = i + 1; j < clickables.length; j++) {
+      const a = clickables[i], b = clickables[j];
+      const ax = a.x - (a.isClickable ? a.w * (HOT_SCALE - 1) / 2 : 0);
+      const ay = a.y - (a.isClickable ? a.h * (HOT_SCALE - 1) / 2 : 0);
+      const aw = a.w * (a.isClickable ? HOT_SCALE : 1);
+      const ah = a.h * (a.isClickable ? HOT_SCALE : 1);
+      const bx = b.x - (b.isClickable ? b.w * (HOT_SCALE - 1) / 2 : 0);
+      const by = b.y - (b.isClickable ? b.h * (HOT_SCALE - 1) / 2 : 0);
+      const bw = b.w * (b.isClickable ? HOT_SCALE : 1);
+      const bh = b.h * (b.isClickable ? HOT_SCALE : 1);
+      const overlap = ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+      if (overlap && Math.abs(a.z - b.z) < 18) {
+        conflictIds.add(a.id);
+        conflictIds.add(b.id);
+      }
+    }
+  }
+  return conflictIds;
+}
+const conflictIds = detectHotspotConflicts();
+
+/* ─── 6. 交互：Raycaster + HUD ─── */
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+/** @type {THREE.Object3D|null} */
+let hovered = null;
+
+const inspectEl = document.getElementById('inspect');
+const inTag = document.getElementById('inTag');
+const inBox = document.getElementById('inBox');
+const inZ = document.getElementById('inZ');
+const inClick = document.getElementById('inClick');
+const inHot = document.getElementById('inHot');
+const inFreq = document.getElementById('inFreq');
+const inOp = document.getElementById('inOp');
+const inWarn = document.getElementById('inWarn');
+
+function showInspect(meta) {
+  inTag.textContent = meta.tagName;
+  inBox.textContent = `x:${meta.x} y:${meta.y} ${meta.w}×${meta.h}`;
+  inZ.textContent = String(meta.z);
+  inClick.textContent = meta.isClickable ? '是' : '否';
+  inHot.textContent = `${meta.hotW.toFixed(0)} × ${meta.hotH.toFixed(0)} px (r≈${hotRadius(meta).toFixed(3)})`;
+  inFreq.textContent = `${meta.changeFrequency} / 100`;
+  inOp.textContent = meta.opacity.toFixed(2);
+  if (conflictIds.has(meta.id)) {
+    inWarn.hidden = false;
+    inWarn.textContent = '⚠ 热区冲突：此节点与另一可点击元素的 Gaussian 场在 2D/层叠空间重叠，加法混合区域可能过曝 — Agent 应标记为交互 Bug。';
+  } else {
+    inWarn.hidden = true;
+  }
+  inspectEl.classList.add('show');
+}
+
+function hideInspect() {
+  inspectEl.classList.remove('show');
+}
+
+canvas.addEventListener('pointermove', (e) => {
+  pointer.x = (e.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / innerHeight) * 2 + 1;
+});
+
+function updateHover() {
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(pickables, false);
+  const hit = hits[0]?.object ?? null;
+
+  if (hovered && hovered !== hit) {
+    const prevMeta = metaByPick.get(hovered);
+    const prevSp = hovered.userData.sprite;
+    if (prevSp?.material && prevMeta) prevSp.material.opacity = prevMeta.opacity;
+  }
+
+  hovered = hit;
+  if (!hit) {
+    hideInspect();
+    return;
+  }
+
+  const meta = metaByPick.get(hit);
+  if (!meta) return;
+  showInspect(meta);
+
+  const sp = hit.userData.sprite;
+  if (sp?.material) sp.material.opacity = Math.min(1, meta.opacity + 0.15);
+}
+
+/* ─── 7. 动画：高能节点微脉动，冲突区增亮 ─── */
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  controls.update();
+
+  sprites.forEach((sprite, i) => {
+    const pick = pickables[i];
+    const meta = metaByPick.get(pick);
+    if (!meta) return;
+    const base = meta.isClickable ? 0.8 : 0.4;
+    const pulse = 1 + Math.sin(t * 2.5 + meta.changeFrequency * 0.08) * 0.06 * (meta.changeFrequency / 100);
+    if (hovered === pick) return;
+    sprite.material.opacity = base * pulse;
+    if (conflictIds.has(meta.id)) {
+      sprite.material.opacity = Math.min(1, sprite.material.opacity * (1.15 + Math.sin(t * 4) * 0.12));
+    }
+  });
+
+  updateHover();
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* 45° 俯瞰初始角 */
+camera.lookAt(controls.target);
+animate();
+</script>
+</body>
+</html>

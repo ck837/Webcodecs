@@ -1,0 +1,325 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #050508;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ── 三列布局：视频区 | 视频区 | 参数列 ── */
+#app-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+#viewport-wrap {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+#controls-panel-mount {
+  flex-shrink: 0;
+  height: 100%;
+}
+
+#viewport-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#split-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  pointer-events: none;
+}
+
+.split-label {
+  align-self: start;
+  justify-self: start;
+  margin: 14px 0 0 14px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  backdrop-filter: blur(6px);
+}
+
+.split-label--raw {
+  color: rgba(200, 200, 210, 0.9);
+  background: rgba(20, 20, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.split-label--enhanced {
+  color: #ffb8dc;
+  background: rgba(255, 110, 180, 0.12);
+  border: 1px solid rgba(255, 120, 180, 0.35);
+}
+
+#split-labels .split-label--enhanced {
+  justify-self: start;
+  grid-column: 2;
+}
+
+#split-divider {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 4;
+  width: 2px;
+  height: 100%;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 110, 180, 0.05) 0%,
+    rgba(255, 110, 180, 0.55) 50%,
+    rgba(255, 110, 180, 0.05) 100%
+  );
+  box-shadow: 0 0 12px rgba(255, 110, 180, 0.35);
+  pointer-events: none;
+}
+
+#overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  max-width: 380px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255, 120, 180, 0.35);
+  border-radius: 8px;
+  background: rgba(8, 8, 16, 0.72);
+  color: #e8e0f0;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+
+#overlay.hidden {
+  opacity: 0;
+}
+
+#overlay h1 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #ff6eb4;
+  margin-bottom: 6px;
+}
+
+#overlay p {
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(232, 224, 240, 0.85);
+}
+
+#overlay .hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: rgba(180, 170, 200, 0.65);
+}
+
+#overlay code {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(255, 110, 180, 0.12);
+  color: #ffb8dc;
+}
+
+/* ── 右侧参数列 ── */
+.controls-panel {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  height: 100%;
+  border-left: 1px solid rgba(255, 120, 180, 0.35);
+  background: rgba(8, 8, 16, 0.96);
+  overflow: hidden;
+  transition: width 0.25s ease;
+}
+
+.controls-panel--collapsed {
+  width: 44px;
+}
+
+.controls-panel--collapsed .controls-panel__body {
+  display: none;
+}
+
+.controls-panel--collapsed .controls-panel__toggle-text {
+  display: none;
+}
+
+.controls-panel--collapsed .controls-panel__toggle-icon {
+  transform: rotate(180deg);
+}
+
+.controls-panel__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 110, 180, 0.1);
+  color: #ffb8dc;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.controls-panel--collapsed .controls-panel__toggle {
+  justify-content: center;
+  padding: 14px 8px;
+}
+
+.controls-panel__toggle-icon {
+  display: inline-block;
+  font-size: 11px;
+  transition: transform 0.25s ease;
+}
+
+.controls-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 14px 14px;
+}
+
+.controls-panel__intro {
+  padding: 12px 0 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.controls-panel__intro h2 {
+  font-size: 12px;
+  color: #ff6eb4;
+  margin-bottom: 8px;
+}
+
+.controls-panel__intro p {
+  font-size: 11px;
+  line-height: 1.55;
+  color: rgba(232, 224, 240, 0.82);
+  margin-bottom: 4px;
+}
+
+.controls-panel__pipeline {
+  margin-top: 6px !important;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 10px !important;
+  color: rgba(255, 184, 220, 0.85) !important;
+  background: rgba(255, 110, 180, 0.08);
+}
+
+.controls-panel__group {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.controls-panel__group h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e8e0f0;
+  margin-bottom: 4px;
+}
+
+.controls-panel__group-desc {
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(180, 170, 200, 0.75);
+  margin-bottom: 10px;
+}
+
+.controls-panel__row {
+  margin-bottom: 12px;
+}
+
+.controls-panel__row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.controls-panel__row-head label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(232, 224, 240, 0.9);
+}
+
+.controls-panel__value {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #ffb8dc;
+}
+
+.controls-panel__row input[type='range'] {
+  width: 100%;
+  height: 4px;
+  accent-color: #ff6eb4;
+  cursor: pointer;
+}
+
+.controls-panel__hint {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: rgba(160, 150, 180, 0.7);
+}
+
+.controls-panel__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 8px;
+  font-size: 11px;
+  color: rgba(232, 224, 240, 0.88);
+  cursor: pointer;
+}
+
+.controls-panel__check input {
+  accent-color: #ff6eb4;
+}
+
+.controls-panel__reset {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 224, 240, 0.85);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.controls-panel__reset:hover {
+  background: rgba(255, 110, 180, 0.12);
+  border-color: rgba(255, 120, 180, 0.35);
+}
+
+@media (max-width: 900px) {
+  .controls-panel:not(.controls-panel--collapsed) {
+    width: 280px;
+  }
+}

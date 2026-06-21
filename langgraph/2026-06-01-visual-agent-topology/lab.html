@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LangGraph 交互实验课 · 有向图 Agent</title>
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{height:100%;background:#07080f;color:#eceff4;font-family:Consolas,"Cascadia Mono",monospace;font-size:14px;line-height:1.55}
+.layout{display:grid;grid-template-columns:minmax(320px,460px) 1fr;grid-template-rows:1fr auto;height:100%}
+@media(max-width:900px){.layout{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}}
+.lesson{background:#12141f;border-right:1px solid #2a2d3e;overflow-y:auto;padding:18px 16px 24px;font-family:system-ui,"PingFang SC","Microsoft YaHei",sans-serif}
+.lesson h1{font-size:1.08rem;color:#58a6ff;font-weight:800;margin-bottom:6px}
+.lesson .meta{font-size:.78rem;color:#8b90a8;margin-bottom:12px;line-height:1.5}
+.mission{padding:12px 14px;margin-bottom:14px;border-radius:8px;background:#1a1f2e;border:1px solid #264f78}
+.mission h3{font-size:.72rem;color:#58a6ff;letter-spacing:.08em;margin-bottom:6px}
+.mission p{font-size:.84rem;color:#d4d4d4;line-height:1.55}
+.mission .io{margin-top:10px;padding:8px 10px;background:#07080f;border-radius:6px;font-family:Consolas,monospace;font-size:.78rem;color:#3fb950;line-height:1.6}
+.pipeline-map{display:flex;flex-wrap:wrap;gap:4px;margin:12px 0 4px;font-size:.68rem}
+.pipeline-map span{padding:3px 7px;border-radius:4px;background:#2a2d3e;color:#8b90a8}
+.pipeline-map span.on{background:#58a6ff;color:#07080f}
+.pipeline-map span.done{background:#264f78;color:#3fb950}
+.step-tag{display:inline-block;padding:3px 10px;border-radius:4px;background:#264f78;color:#58a6ff;font-size:.72rem;font-weight:700;margin-bottom:8px}
+.lesson h2{font-size:1.02rem;color:#ffb86c;margin-bottom:4px}
+.lesson .subtitle{font-size:.82rem;color:#8b90a8;margin-bottom:12px}
+.box{margin-bottom:12px;padding:10px 12px;border-radius:6px;font-size:.84rem;line-height:1.6}
+.box.goal{background:#1e2a1e;border-left:3px solid #3fb950}
+.box.goal strong{color:#3fb950;display:block;font-size:.72rem;margin-bottom:4px}
+.box.why{background:#2a2418;border-left:3px solid #ffb86c}
+.box.why strong{color:#ffb86c;display:block;font-size:.72rem;margin-bottom:4px}
+.box.body{color:#eceff4}
+.box.body p{margin-bottom:8px}
+.box.body ul,.box.body ol{padding-left:1.2em;margin:6px 0}
+.box.body .detail-h{font-size:.78rem;color:#58a6ff;font-weight:700;margin:12px 0 6px}
+.pipe-pre{margin:8px 0;padding:10px 12px;background:#07080f;border-radius:6px;font-family:Consolas,monospace;font-size:.72rem;line-height:1.55;color:#ff79c6;white-space:pre-wrap}
+.lesson code{font-family:Consolas,monospace;font-size:.8rem;color:#ff79c6;background:#1a1f2e;padding:1px 5px;border-radius:3px}
+.tip{margin-top:10px;padding:10px 12px;border-left:3px solid #58a6ff;background:#1a1f2e;font-size:.82rem;color:#8b90a8;line-height:1.55}
+.tip strong{color:#58a6ff}
+.main{display:flex;flex-direction:column;min-height:0;background:#07080f}
+.term-wrap{flex:1;overflow-y:auto;padding:12px 16px;min-height:0}
+.term{white-space:pre-wrap;word-break:break-all}
+.term .prompt{color:#8b90a8}
+.term .cmd{color:#ffb86c}
+.term .ok{color:#3fb950}
+.term .info{color:#58a6ff}
+.term .err{color:#ff5555}
+.term .dim{color:#6b7088}
+.term .hl{color:#ff79c6}
+.term .banner{color:#58a6ff;font-weight:bold}
+.viz{border-top:1px solid #2a2d3e;padding:10px 14px;background:#0a0c14;min-height:140px}
+.viz-label{font-size:.72rem;color:#6b7088;margin-bottom:6px;font-family:system-ui,sans-serif}
+.viz canvas{display:block;width:100%;height:120px;background:#07080f;border:1px solid #2a2d3e;border-radius:6px}
+.bar-ctrl{grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:10px 16px;background:#12141f;border-top:1px solid #2a2d3e;flex-wrap:wrap;font-family:system-ui,sans-serif}
+.bar-ctrl button{padding:8px 16px;border:1px solid #555;border-radius:4px;background:#58a6ff;color:#07080f;font-size:.85rem;font-weight:600;cursor:pointer}
+.bar-ctrl button.secondary{background:#2a2d3e;color:#eceff4;border-color:#444}
+.bar-ctrl button:disabled{opacity:.4;cursor:not-allowed}
+.bar-ctrl .progress{color:#8b90a8;font-size:.82rem;margin-left:auto}
+.bar-ctrl a{color:#58a6ff;font-size:.82rem;text-decoration:none}
+.steps{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.steps span{width:26px;height:26px;display:grid;place-items:center;border-radius:4px;font-size:.7rem;font-weight:700;background:#2a2d3e;color:#8b90a8}
+.steps span.nav{cursor:pointer}
+.steps span.nav:hover{outline:1px solid #58a6ff}
+.steps span.done{background:#264f78;color:#3fb950}
+.steps span.active{background:#58a6ff;color:#07080f;outline:2px solid #ffb86c}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="lesson">
+    <h1>LangGraph 有向图 Agent · 实验课</h1>
+    <p class="meta">像 ORT lab 一样：左侧读原理，右侧看「终端输出」，底部看拓扑。浏览器内用 JS 模拟 Python 逻辑；真实 LangGraph 见 <code>visual_agent.py</code>。</p>
+    <div class="mission">
+      <h3>🎯 本系列讲什么</h3>
+      <p>把 Agent 从<strong>线性 Pipeline</strong>升级成<strong>有向图状态机</strong>：节点 = AI 动作，边 = 路由，粉色回流边 = 发现 Bug 重试。</p>
+      <div class="io">START → 生成代码 → 排查 Bug
+              ↑___________|  (条件边 continue)
+              └→ END (exit 通过)</div>
+      <p style="margin-top:8px;font-size:.8rem;color:#8b90a8"><strong>上次进度：</strong>Demo ① 拓扑 Canvas 已完成 → 现在补实验课 ②</p>
+    </div>
+    <div class="pipeline-map" id="pipelineMap"></div>
+    <div class="steps" id="stepDots"></div>
+    <div class="step-tag" id="stepTag">步骤 0 / 7</div>
+    <h2 id="lessonTitle">—</h2>
+    <p class="subtitle" id="lessonSubtitle"></p>
+    <div class="box goal" id="lessonGoal"></div>
+    <div class="box why" id="lessonWhy"></div>
+    <div class="box body" id="lessonBody"></div>
+    <div class="tip" id="lessonTip"></div>
+    <p style="margin-top:14px;font-size:.78rem;color:#6b7088">
+      <a href="./index.html" style="color:#58a6ff">Canvas 拓扑面板 →</a>
+      · <a href="../总览.md" style="color:#58a6ff">系列总览</a>
+    </p>
+  </aside>
+  <div class="main">
+    <div class="term-wrap"><div class="term" id="terminal"></div></div>
+    <div class="viz">
+      <div class="viz-label">拓扑预览（步骤 5 后出现完整图 · 步骤 7 高亮当前节点）</div>
+      <canvas id="topoCanvas" width="800" height="120"></canvas>
+    </div>
+  </div>
+  <div class="bar-ctrl">
+    <button type="button" id="btnPrev" class="secondary" disabled>← 上一步</button>
+    <button type="button" id="btnRun">▶ 执行本步</button>
+    <button type="button" id="btnNext" class="secondary">下一步 →</button>
+    <button type="button" id="btnAuto" class="secondary">自动跑完全部</button>
+    <button type="button" id="btnClear" class="secondary">重新开始</button>
+    <span class="progress" id="progress">从步骤 0 开始</span>
+    <a href="./index.html">Canvas 页</a>
+  </div>
+</div>
+<script>
+const PIPELINE = ['总览','①状态','②节点','③普通边','④条件边','⑤编译','⑥运行','⑦可视化'];
+
+const GRAPH = {
+  nodes: [
+    { id: '__start__', label: 'START', color: '#8b949e', icon: '▶' },
+    { id: 'generator', label: '生成代码', color: '#58a6ff', icon: '⚡' },
+    { id: 'evaluator', label: '排查 Bug', color: '#d29922', icon: '🔍' },
+    { id: '__end__', label: 'END', color: '#3fb950', icon: '✓' },
+  ],
+  edges: [
+    { from: '__start__', to: 'generator', color: '#58a6ff' },
+    { from: 'generator', to: 'evaluator', color: '#58a6ff' },
+    { from: 'evaluator', to: 'generator', conditional: true, label: 'continue', color: '#ff79c6' },
+    { from: 'evaluator', to: '__end__', conditional: true, label: 'exit', color: '#3fb950' },
+  ],
+};
+
+const POS = {
+  __start__: { x: 0.08, y: 0.5 },
+  generator: { x: 0.35, y: 0.5 },
+  evaluator: { x: 0.62, y: 0.5 },
+  __end__: { x: 0.92, y: 0.5 },
+};
+
+const STEPS = [
+  {
+    title: '开始前：LangGraph 在干什么',
+    subtitle: '本步不跑代码，建立心智地图',
+    goal: '搞懂 LangGraph 与 LangChain 的差别，以及本 Demo 的 4 个节点 + 1 条回流边。',
+    why: 'Agent 一旦要「重试、分支、循环」，线性 Pipeline 就崩了。LangGraph 用图描述控制流，才能可视化。',
+    body: `<p><strong>三大框架（人话）：</strong></p>
+      <ul>
+        <li><strong>LangChain</strong> — 线性 Pipeline，一条线走到底</li>
+        <li><strong>LangGraph</strong> — 有向图状态机，节点+边+条件回流 ← 本系列主角</li>
+        <li><strong>AutoGen</strong> — 多 Agent 聊天室，偏对话流</li>
+      </ul>
+      <p class="detail-h">本 Demo 业务故事</p>
+      <p>AI 写代码 → 审查 Bug → 有 Bug 就回到写代码 → 最多循环直到通过 → END。</p>
+      <p class="detail-h">系列进度</p>
+      <ul>
+        <li>✅ Demo ① <code>visual_agent.py</code> + <code>index.html</code> Canvas</li>
+        <li>▶ 实验课 ② 本页（逐步理解构图与运行）</li>
+        <li>⬜ Demo ③ React Flow / 3D 控制台（计划中）</li>
+      </ul>`,
+    tip: '点执行会在终端打印路线图；真实 Python：python visual_agent.py',
+    async run() {
+      printBanner('═══ LangGraph Agent 构图路线 ═══');
+      print('  1.AgentState   2.节点  3.普通边  4.条件边  5.compile  6.invoke  7.topology.json', 'info');
+      printOk('下一步从「共享状态」开始');
+    },
+  },
+  {
+    title: '步骤 1 · AgentState 共享状态',
+    subtitle: '图的「黑板」— 所有节点读写的 dict',
+    goal: '定义 AgentState：iteration、has_bug、log — 节点之间靠它传信息。',
+    why: 'LangGraph 不是每个节点各玩各的，而是<strong>同一份状态</strong>在节点间流转、被增量更新。',
+    body: `<p>Python 里用 <code>TypedDict</code>：</p>
+      <div class="pipe-pre">class AgentState(TypedDict):
+    has_bug: bool
+    iteration: int
+    log: list[str]</div>
+      <p>每个节点函数签名：<code>(state) → 部分更新 dict</code>，框架自动 merge 进总状态。</p>`,
+    tip: '类比：白板上的项目进度表，每个 AI 角色只改自己负责的几行。',
+    async run(ctx) {
+      ctx.state = { iteration: 0, has_bug: false, log: [] };
+      printCmd('AgentState = { iteration: 0, has_bug: false, log: [] }');
+      printOk('共享状态已初始化');
+      printInfo('iteration', ctx.state.iteration);
+      printInfo('log', JSON.stringify(ctx.state.log));
+      printDim('意义：后续每个节点都会读写这块「黑板」');
+    },
+  },
+  {
+    title: '步骤 2 · 定义节点 Node',
+    subtitle: '图上的圆圈 = 一个 AI 动作',
+    goal: '注册 generator（生成代码）和 evaluator（排查 Bug）两个节点函数。',
+    why: 'LangGraph 里「节点」就是普通 Python 函数，不是魔法 — 输入 state，输出要更新的字段。',
+    body: `<p><strong>generator</strong>：iteration+1，log 追加 <code>generator#N</code></p>
+      <p><strong>evaluator</strong>：模拟审查 — 前 2 轮 has_bug=True，第 3 轮 False</p>
+      <div class="pipe-pre">workflow.add_node("generator", node_generate_code)
+workflow.add_node("evaluator", node_check_bug)</div>`,
+    tip: '真实项目里这里会调 LLM API；Demo 用 print 模拟。',
+    async run(ctx) {
+      printCmd('add_node("generator", node_generate_code)');
+      printCmd('add_node("evaluator", node_check_bug)');
+      ctx.state = nodeGenerate(ctx.state);
+      printOk('generator 试跑一轮');
+      printInfo('state', JSON.stringify(ctx.state));
+      ctx.state = nodeEvaluate(ctx.state);
+      printOk('evaluator 试跑');
+      printInfo('has_bug', ctx.state.has_bug);
+      printInfo('log', JSON.stringify(ctx.state.log));
+    },
+  },
+  {
+    title: '步骤 3 · 普通边 Edge',
+    subtitle: '无条件路由 — 做完 A 一定去 B',
+    goal: '连边：START → generator → evaluator。',
+    why: '普通边 = 确定性流程。没有 if/else，像流水线下一站。',
+    body: `<div class="pipe-pre">workflow.add_edge(START, "generator")
+workflow.add_edge("generator", "evaluator")</div>
+      <p>拓扑上是一条蓝色直线。数据/状态沿边单向流动。</p>`,
+    tip: 'LangChain 的 Chain 本质上只有这种边。',
+    async run(ctx) {
+      printCmd('add_edge(START, "generator")');
+      printCmd('add_edge("generator", "evaluator")');
+      printOk('2 条普通边已连接');
+      print('  __start__ ──→ generator ──→ evaluator', 'info');
+      ctx.graphEdges = ['start→gen', 'gen→eval'];
+      drawTopo(null);
+    },
+  },
+  {
+    title: '步骤 4 · 条件边 Conditional Edge',
+    subtitle: '本系列可视化核心 — 回流 = 反思重试',
+    goal: 'evaluator 之后由 router 决定：continue 回 generator 或 exit 到 END。',
+    why: '没有条件边就没有「循环纠错」。粉色回流边是 Canvas 里最好看的能量逆流。',
+    body: `<div class="pipe-pre">def router_condition(state):
+    return "continue" if state["has_bug"] else "exit"
+
+workflow.add_conditional_edges(
+    "evaluator", router_condition,
+    {"continue": "generator", "exit": END}
+)</div>
+      <p><strong>continue</strong> → 发现 Bug，回到 generator</p>
+      <p><strong>exit</strong> → 通过，走向 END</p>`,
+    tip: '条件边是 LangGraph 相对 LangChain 的杀手级特性。',
+    async run(ctx) {
+      printCmd('add_conditional_edges("evaluator", router, {...})');
+      printOk('条件路由已注册');
+      print('  evaluator ──continue──→ generator  (粉)', 'hl');
+      print('  evaluator ──exit──────→ __end__     (绿)', 'ok');
+      drawTopo(null);
+    },
+  },
+  {
+    title: '步骤 5 · compile 编译图',
+    subtitle: 'StateGraph → 可执行的 CompiledGraph',
+    goal: '调用 compile()，得到可 invoke/stream 的 app，并导出 topology.json 结构。',
+    why: 'compile 会做校验、优化，并生成供前端渲染的节点/边列表。',
+    body: `<div class="pipe-pre">app = workflow.compile()
+export_topology_json(app)  → output/topology.json</div>
+      <p>编译后可用 <code>app.get_graph()</code>  introspect 拓扑。</p>`,
+    tip: 'Python 真跑：python visual_agent.py 会写 topology.json',
+    async run(ctx) {
+      printCmd('app = workflow.compile()');
+      printOk('图编译完成（JS 模拟）');
+      printInfo('nodes', GRAPH.nodes.map(n => n.id).join(', '));
+      printInfo('edges', GRAPH.edges.length + ' 条（含 2 条条件边）');
+      try {
+        const res = await fetch('output/topology.json');
+        if (res.ok) {
+          const t = await res.json();
+          printOk('已检测到 output/topology.json（Python 导出）');
+          printInfo('title', t.title);
+        }
+      } catch { printDim('提示：运行 python visual_agent.py 生成 topology.json'); }
+      drawTopo(null);
+    },
+  },
+  {
+    title: '步骤 6 · invoke / stream 运行',
+    subtitle: '状态机在图上走 — 本步核心执行',
+    goal: '从 START 出发，沿边跑完 3 轮循环，打印完整 trace。',
+    why: '这是「Agent 真的在干活」的一步 — 与 ORT 的 session.run 类似：你只触发，框架按图执行。',
+    body: `<p><strong>Python：</strong><code>app.stream(initial_state)</code> 逐步 yield 每个节点的更新。</p>
+      <p class="detail-h">预期 trace（3 轮 Bug 后 exit）</p>
+      <div class="pipe-pre">generator → evaluator → continue → generator → …
+→ evaluator → exit → END</div>
+      <p>本步在 JS 里完整模拟；Python trace 写入 <code>output/trace.json</code>。</p>`,
+    tip: '跑完可切回本步重读；终端会打印每一跳。',
+    async run(ctx) {
+      printCmd('for event in app.stream({ iteration: 0, log: [] }): ...');
+      ctx.state = { iteration: 0, has_bug: false, log: [] };
+      ctx.trace = [];
+      let prev = '__start__';
+      const maxRounds = 10;
+      let rounds = 0;
+      while (rounds++ < maxRounds) {
+        ctx.state = nodeGenerate(ctx.state);
+        ctx.trace.push({ from: prev, to: 'generator', node: 'generator' });
+        print(`  → generator  iteration=${ctx.state.iteration}`, 'info');
+        prev = 'generator';
+        drawTopo('generator');
+        await sleep(80);
+
+        ctx.state = nodeEvaluate(ctx.state);
+        ctx.trace.push({ from: prev, to: 'evaluator', node: 'evaluator' });
+        print(`  → evaluator  has_bug=${ctx.state.has_bug}`, 'info');
+        prev = 'evaluator';
+        drawTopo('evaluator');
+        await sleep(80);
+
+        const route = routerCondition(ctx.state);
+        if (route === 'continue') {
+          ctx.trace.push({ from: 'evaluator', to: 'generator', route: 'continue' });
+          print('  ↩ continue → 回流 generator', 'hl');
+          drawTopo('evaluator');
+          await sleep(80);
+          continue;
+        }
+        ctx.trace.push({ from: 'evaluator', to: '__end__', route: 'exit' });
+        print('  ✓ exit → END', 'ok');
+        drawTopo('__end__');
+        break;
+      }
+      printOk(`运行完成 log=${JSON.stringify(ctx.state.log)}`);
+      printDim('Python 等价：python visual_agent.py');
+    },
+  },
+  {
+    title: '步骤 7 · 拓扑可视化',
+    subtitle: 'topology.json → Canvas Dashboard',
+    goal: '把编译出的图渲染成控制台：节点发光、粒子沿边流动，模拟能量/数据流。',
+    why: 'Agent 逻辑可视化是端侧 HMI 的差异化能力 — 让用户「看见 AI 在想什么」。',
+    body: `<p>数据流：</p>
+      <div class="pipe-pre">visual_agent.py → topology.json + trace.json
+        ↓
+index.html Canvas（粒子动画）
+        ↓
+（计划）React Flow / Three.js 3D 节点阵列</div>
+      <p>打开 <a href="./index.html" style="color:#58a6ff">index.html</a> 点「模拟运行」看完整动效。</p>
+      <p><strong>系列下一讲：</strong>把 topology 接到 i23DGS 流水线面板，或升级 3D 拓扑。</p>`,
+    tip: '🎉 实验课完成！可回顾任意步骤（上一步 / 圆点）',
+    async run(ctx) {
+      printCmd('fetch("output/topology.json") → Canvas.render()');
+      try {
+        const res = await fetch('output/topology.json');
+        if (res.ok) printOk('topology.json 加载成功');
+        else throw new Error('not found');
+      } catch {
+        printDim('使用内置拓扑（先运行 python visual_agent.py）');
+      }
+      if (ctx.trace?.length) {
+        printInfo('本次 trace 步数', ctx.trace.length);
+        ctx.trace.forEach((t, i) => print(`  ${i + 1}. ${t.from} → ${t.to}${t.route ? ' (' + t.route + ')' : ''}`, 'dim'));
+      }
+      drawTopo('__end__');
+      printOk('═══ LangGraph 实验课完成 ═══');
+      printDim('打开 index.html 看 Canvas 粒子版');
+    },
+  },
+];
+
+// ── 与 visual_agent.py 一致的模拟逻辑 ──
+function nodeGenerate(state) {
+  const n = (state.iteration || 0) + 1;
+  const log = [...(state.log || []), `generator#${n}`];
+  return { ...state, iteration: n, log };
+}
+function nodeEvaluate(state) {
+  const log = [...(state.log || []), 'evaluator'];
+  const iteration = state.iteration || 1;
+  const has_bug = iteration < 3;
+  return { ...state, has_bug, log, iteration };
+}
+function routerCondition(state) {
+  return state.has_bug ? 'continue' : 'exit';
+}
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── UI ──
+const terminal = document.getElementById('terminal');
+const canvas = document.getElementById('topoCanvas');
+const ctx2d = canvas.getContext('2d');
+const state = { step: 0, furthest: 0, done: new Array(STEPS.length).fill(false), state: null, trace: [] };
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function appendHtml(h) { terminal.innerHTML += h; terminal.parentElement.scrollTop = terminal.parentElement.scrollHeight; }
+function print(t = '', c = 'info') { appendHtml(`<span class="${c}">${esc(t)}</span>\n`); }
+function printCmd(t) { appendHtml(`<span class="prompt">langgraph-lab&gt; </span><span class="cmd">${esc(t)}</span>\n`); }
+function printOk(t) { print('✓ ' + t, 'ok'); }
+function printInfo(k, v) { print(`    ${k}: ${v}`, 'info'); }
+function printDim(t) { print(t, 'dim'); }
+function printErr(t) { print('✗ ' + t, 'err'); }
+function printBanner(t) { appendHtml(`<span class="banner">${esc(t)}</span>\n`); }
+
+function maxNavStep() {
+  let m = state.furthest;
+  for (let i = 0; i < STEPS.length; i++) if (state.done[i]) m = Math.max(m, i);
+  return m;
+}
+function goToStep(i, opts = {}) {
+  if (i < 0 || i >= STEPS.length) return;
+  if (!opts.force && i > maxNavStep()) return;
+  state.step = i;
+  state.furthest = Math.max(state.furthest, i);
+  renderLesson();
+  document.querySelector('.lesson')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function drawTopo(active) {
+  const W = canvas.clientWidth || 800, H = 120;
+  canvas.width = W * 2; canvas.height = H * 2;
+  ctx2d.setTransform(2, 0, 0, 2, 0, 0);
+  ctx2d.fillStyle = '#07080f';
+  ctx2d.fillRect(0, 0, W, H);
+  const layout = {};
+  for (const [id, p] of Object.entries(POS)) layout[id] = { x: p.x * W, y: p.y * H };
+  const nodeMap = Object.fromEntries(GRAPH.nodes.map(n => [n.id, n]));
+
+  if (state.step < 3) return;
+
+  for (const e of GRAPH.edges) {
+    const a = layout[e.from], b = layout[e.to];
+    if (!a || !b) continue;
+    const curved = e.from === 'evaluator' && e.to === 'generator';
+    ctx2d.strokeStyle = e.color;
+    ctx2d.lineWidth = curved ? 2.5 : 2;
+    ctx2d.beginPath();
+    ctx2d.moveTo(a.x, a.y);
+    if (curved) ctx2d.quadraticCurveTo((a.x + b.x) / 2, a.y - 50, b.x, b.y);
+    else ctx2d.lineTo(b.x, b.y);
+    ctx2d.stroke();
+  }
+  for (const n of GRAPH.nodes) {
+    const p = layout[n.id];
+    if (!p) continue;
+    const glow = active === n.id;
+    ctx2d.beginPath();
+    ctx2d.arc(p.x, p.y, glow ? 22 : 18, 0, Math.PI * 2);
+    ctx2d.fillStyle = '#161b22';
+    ctx2d.fill();
+    ctx2d.strokeStyle = n.color;
+    ctx2d.lineWidth = glow ? 3 : 2;
+    ctx2d.stroke();
+    ctx2d.fillStyle = n.color;
+    ctx2d.font = '10px system-ui';
+    ctx2d.textAlign = 'center';
+    ctx2d.fillText(n.label, p.x, p.y + 32);
+  }
+}
+
+function renderLesson() {
+  const s = STEPS[state.step];
+  document.getElementById('stepTag').textContent = `步骤 ${state.step} / ${STEPS.length - 1}${state.step === 0 ? '（总览）' : ''}`;
+  document.getElementById('lessonTitle').textContent = s.title;
+  document.getElementById('lessonSubtitle').textContent = s.subtitle || '';
+  document.getElementById('lessonGoal').innerHTML = `<strong>🎯 本步目标</strong>${s.goal}`;
+  document.getElementById('lessonWhy').innerHTML = `<strong>❓ 为什么要做</strong>${s.why}`;
+  document.getElementById('lessonBody').innerHTML = s.body;
+  document.getElementById('lessonTip').innerHTML = `<strong>💡 提示</strong> ${s.tip}`;
+
+  document.getElementById('pipelineMap').innerHTML = PIPELINE.map((lb, i) => {
+    let cls = i === state.step ? 'on' : (i < state.step || state.done[i - 1] ? 'done' : '');
+    if (state.step === 0 && i === 0) cls = 'on';
+    return `<span class="${cls}">${lb}</span>`;
+  }).join('');
+
+  document.getElementById('stepDots').innerHTML = STEPS.map((_, i) => {
+    let c = state.done[i] ? 'done' : '';
+    if (i === state.step) c = 'active';
+    const nav = i <= maxNavStep() ? ' nav' : '';
+    return `<span class="${c}${nav}" data-step="${i}">${i}</span>`;
+  }).join('');
+  document.getElementById('stepDots').querySelectorAll('[data-step]').forEach(el => {
+    el.onclick = () => goToStep(Number(el.dataset.step));
+  });
+
+  const isLast = state.step >= STEPS.length - 1;
+  const reviewing = state.done[state.step];
+  document.getElementById('btnPrev').disabled = state.step <= 0;
+  document.getElementById('btnNext').disabled = isLast || (state.step > 0 && !state.done[state.step]);
+  document.getElementById('btnNext').textContent = state.step === 0 ? '开始实验 →' : '下一步 →';
+  document.getElementById('btnAuto').disabled = state.step !== 0 && state.done.every(Boolean);
+  document.getElementById('btnRun').textContent = reviewing ? '↻ 重新执行本步' : (state.step === 0 ? '▶ 打印路线图' : '▶ 执行本步');
+  document.getElementById('progress').textContent = reviewing
+    ? (isLast ? '全部完成 · 可回看任意步' : '本步已完成 · 可上一步/圆点回看')
+    : (state.step === 0 ? '先读左侧总览' : '点击「执行本步」');
+  drawTopo(null);
+}
+
+async function runCurrentStep() {
+  const btn = document.getElementById('btnRun');
+  btn.disabled = true;
+  print('');
+  printCmd(`:: 步骤 ${state.step} — ${STEPS[state.step].title}`);
+  try {
+    await STEPS[state.step].run(state);
+    state.done[state.step] = true;
+    state.furthest = Math.max(state.furthest, state.step);
+  } catch (err) {
+    printErr(err.message);
+  }
+  btn.disabled = false;
+  renderLesson();
+}
+
+function prevStep() { if (state.step > 0) goToStep(state.step - 1); }
+function nextStep() {
+  if (state.step > 0 && !state.done[state.step]) return;
+  if (state.step < STEPS.length - 1) goToStep(state.step + 1, { force: true });
+}
+async function runAll() {
+  document.getElementById('btnAuto').disabled = true;
+  for (let i = state.step; i < STEPS.length; i++) {
+    state.step = i; renderLesson();
+    await runCurrentStep();
+    await sleep(400);
+  }
+  document.getElementById('btnAuto').disabled = false;
+}
+
+document.getElementById('btnRun').onclick = runCurrentStep;
+document.getElementById('btnPrev').onclick = prevStep;
+document.getElementById('btnNext').onclick = nextStep;
+document.getElementById('btnAuto').onclick = runAll;
+document.getElementById('btnClear').onclick = () => {
+  terminal.innerHTML = '';
+  state.step = 0; state.furthest = 0; state.done.fill(false);
+  state.state = null; state.trace = [];
+  renderLesson();
+};
+
+terminal.innerHTML = '<span class="dim">LangGraph 交互实验课\n左侧读讲解 · 右侧看输出 · 底部看拓扑\n\n</span>';
+renderLesson();
+window.addEventListener('resize', () => drawTopo(null));
+</script>
+</body>
+</html>

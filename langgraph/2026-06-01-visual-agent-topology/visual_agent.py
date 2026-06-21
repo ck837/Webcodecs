@@ -30,6 +30,7 @@ from langgraph.graph import END, START, StateGraph
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "output"
 TOPOLOGY_JSON = OUT / "topology.json"
+TRACE_JSON = OUT / "trace.json"
 PNG_PATH = OUT / "my_agent_brain.png"
 
 
@@ -149,10 +150,44 @@ def export_png(app) -> bool:
 
 # ── 6. 运行 Agent ────────────────────────────────────────────────
 
-def run_agent(app):
+def run_agent(app) -> dict:
     print("\n--- Agent 运行 trace ---")
-    result = app.invoke({"iteration": 0, "log": []})
+    trace_steps: list[dict] = []
+    state: AgentState = {"iteration": 0, "log": []}
+    prev_node = "__start__"
+
+    for event in app.stream(state):
+        for node_name, update in event.items():
+            print(f"  → {node_name}: {update}")
+            trace_steps.append({
+                "from": prev_node,
+                "to": node_name,
+                "node": node_name,
+                "update": update,
+            })
+            prev_node = node_name
+            state = {**state, **update}
+
+    result = state
     print(f"--- 完成: {result.get('log', [])} ---")
+
+    if not result.get("has_bug"):
+        trace_steps.append({
+            "from": prev_node,
+            "to": "__end__",
+            "node": "__end__",
+            "update": {"route": "exit"},
+        })
+
+    payload = {
+        "title": "Agent invoke trace",
+        "steps": trace_steps,
+        "final": result,
+    }
+    OUT.mkdir(parents=True, exist_ok=True)
+    TRACE_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    print(f"  [ok] {TRACE_JSON.relative_to(ROOT)}")
+    return result
 
 
 # ── 7. HTTP ──────────────────────────────────────────────────────

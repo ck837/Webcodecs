@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D 空间 AIGC 元素调配器 · WebGL Demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud">
+      <h1>3D 空间 AIGC 元素调配器</h1>
+      <p id="status">初始化中…</p>
+      <p class="hint">
+        绿幕 MP4 放 <code>public/greenscreen.mp4</code>。
+        <a href="/tutorial.html" style="color:#9edcff;pointer-events:auto">抠像 Threshold / Slope 教程 →</a>
+      </p>
+    </div>
+    <div id="app-layout">
+      <div id="viewport-wrap"></div>
+      <aside id="controls-panel-mount"></aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ONNX Runtime Web · MobileNet 图像分类入门</title>
+<style>
+*{margin:0;box-sizing:border-box}
+html,body{min-height:100%;background:#0f1419;color:#e6edf3;font-family:system-ui,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;line-height:1.5}
+.wrap{max-width:920px;margin:0 auto;padding:24px 20px 48px}
+header{margin-bottom:24px}
+header h1{font-size:1.45rem;font-weight:700;color:#58a6ff}
+header p{margin-top:8px;font-size:.92rem;color:#8b949e;max-width:640px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-bottom:16px}
+.card h2{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8b949e;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+.preview{flex:1;min-width:260px}
+.preview canvas,#previewImg{display:block;max-width:100%;border-radius:8px;background:#0d1117;border:1px solid #21262d}
+.controls{flex:1;min-width:240px;display:flex;flex-direction:column;gap:12px}
+label.file{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;border:1px dashed #388bfd66;background:#388bfd14;color:#58a6ff;font-size:.9rem;font-weight:600;cursor:pointer;width:fit-content}
+label.file:hover{background:#388bfd22}
+label.file input{display:none}
+select.model{padding:10px 12px;border-radius:8px;border:1px solid #30363d;background:#0d1117;color:#e6edf3;font-size:.88rem;max-width:100%}
+button{padding:10px 18px;border-radius:8px;border:1px solid #238636;background:#238636;color:#fff;font-size:.9rem;font-weight:600;cursor:pointer;width:fit-content}
+button.secondary{border-color:#388bfd;background:#388bfd18;color:#58a6ff}
+button.secondary:hover{background:#388bfd28}
+button:hover{background:#2ea043}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{font-size:.85rem;color:#8b949e;min-height:1.4em}
+.status.err{color:#f85149}
+.status.ok{color:#3fb950}
+#results{font-size:.92rem}
+#results .timing{color:#8b949e;font-size:.85rem;margin-bottom:12px}
+#results ol{padding-left:20px}
+#results li{margin-bottom:6px}
+#results .bar{height:6px;border-radius:3px;background:#21262d;margin-top:4px;overflow:hidden}
+#results .bar i{display:block;height:100%;background:linear-gradient(90deg,#388bfd,#a371f7);border-radius:3px}
+.note{margin-top:20px;padding:16px;border-radius:10px;background:#0d1117;border:1px solid #21262d;font-size:.82rem;color:#8b949e}
+.note h3{font-size:.75rem;color:#58a6ff;margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
+.note ul{padding-left:18px}
+.note li{margin-bottom:4px}
+.note .warn{color:#d29922;margin-top:8px;font-size:.82rem;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ONNX Runtime Web · 图像分类入门</h1>
+    <p>ImageNet 图像分类：标准预处理（Resize 256 + CenterCrop 224）+ 可选高精度模型。
+      <a href="./lab.html" style="color:#58a6ff;margin-left:8px">交互实验课 →</a></p>
+  </header>
+
+  <div class="card">
+    <h2>上传 & 推理</h2>
+    <div class="row">
+      <div class="preview">
+        <canvas id="canvas" width="224" height="224"></canvas>
+        <img id="previewImg" alt="" hidden>
+      </div>
+      <div class="controls">
+        <select id="modelSelect" class="model" disabled>
+          <option value="resnet18">ResNet18 — 高精度（推荐，~45MB）</option>
+          <option value="mobilenet">MobileNet v2 — 轻量快速（~14MB）</option>
+        </select>
+        <label class="file">
+          选择图片
+          <input type="file" id="fileInput" accept="image/*">
+        </label>
+        <button type="button" id="btnSampleDog" class="secondary" disabled>加载示例（狗 · 推荐）</button>
+        <button type="button" id="btnSample" class="secondary" disabled>加载示例（耳机 · 易误判）</button>
+        <button type="button" id="btnRun" disabled>运行推理</button>
+        <div class="status" id="status">正在初始化 ONNX Runtime…</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>推理结果</h2>
+    <div id="results">
+      <p class="timing">上传图片并点击「运行推理」</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <h3>已就绪 · 开箱即用</h3>
+    <ul>
+      <li>预处理已对齐 ImageNet 标准：<code>Resize(256) + CenterCrop(224)</code>，比旧版 letterbox 更准确</li>
+      <li>默认 <code>ResNet18</code>；缺模型请运行 <code>scripts/download.ps1</code></li>
+      <li>ImageNet 仅 1000 类，<strong>没有 headphones</strong>；耳机图常被识别成 iPod / microphone 等相近类</li>
+      <li>建议先用「示例（狗）」验证链路；上传真实场景图时结果需在 1000 类范围内理解</li>
+    </ul>
+  </div>
+</div>
+
+<!-- onnxruntime-web：浏览器端 ONNX 推理运行时 -->
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+<script src="./preprocess.js"></script>
+<script>
+/**
+ * ONNX Runtime Web 图像分类 Demo
+ * 精度要点：ImageNet 标准预处理 + ResNet18（可选 MobileNet 轻量）
+ */
+
+const MODELS = {
+  resnet18: {
+    url: './models/resnet18-v2-7.onnx',
+    label: 'ResNet18',
+  },
+  mobilenet: {
+    url: './models/mobilenetv2-7.onnx',
+    label: 'MobileNet v2',
+  },
+};
+
+const LABELS_URL = './models/imagenet_classes.txt';
+const SAMPLE_DOG_URL = './sample/dog.jpg';
+const SAMPLE_HEADPHONES_URL = './sample/headphones.jpg';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: true });
+const fileInput = document.getElementById('fileInput');
+const modelSelect = document.getElementById('modelSelect');
+const btnSample = document.getElementById('btnSample');
+const btnSampleDog = document.getElementById('btnSampleDog');
+const btnRun = document.getElementById('btnRun');
+const statusEl = document.getElementById('status');
+const resultsEl = document.getElementById('results');
+
+let session = null;
+let labels = [];
+let loadedImage = null;
+let currentModelKey = 'resnet18';
+
+function modelUrl() {
+  return MODELS[currentModelKey].url;
+}
+
+function setStatus(msg, kind = '') {
+  statusEl.textContent = msg;
+  statusEl.className = 'status' + (kind ? ' ' + kind : '');
+}
+
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+
+async function loadLabels() {
+  try {
+    const res = await fetch(LABELS_URL);
+    labels = (await res.text()).trim().split('\n');
+    if (labels.length < 1000) throw new Error('标签数量不足');
+  } catch (e) {
+    console.warn('标签加载失败', e);
+    labels = Array.from({ length: 1000 }, (_, i) => `class_${i}`);
+  }
+}
+
+async function createSession() {
+  const url = modelUrl();
+  setStatus(`正在加载 ${MODELS[currentModelKey].label} …`);
+  session = await ort.InferenceSession.create(url, {
+    executionProviders: ['wasm'],
+    graphOptimizationLevel: 'all',
+  });
+  setStatus(`${MODELS[currentModelKey].label} 就绪 · 输入 ${session.inputNames[0]} · 标准 CenterCrop 预处理`, 'ok');
+}
+
+async function runInference(inputTensor) {
+  const inputName = session.inputNames[0];
+  const t0 = performance.now();
+  const outputMap = await session.run({ [inputName]: inputTensor });
+  return { outputMap, inferMs: performance.now() - t0 };
+}
+
+function parseOutput(outputMap, inferMs, preprocessMs) {
+  const outputName = session.outputNames[0];
+  const output = outputMap[outputName];
+  const probs = toProbabilities(output.data);
+  const top5 = topK(probs, 5);
+  const maxScore = top5[0]?.score || 1;
+
+  let html = `<p class="timing">模型 <strong>${MODELS[currentModelKey].label}</strong> · 推理 <strong>${inferMs.toFixed(1)} ms</strong> · 预处理 ${preprocessMs.toFixed(1)} ms</p>`;
+  html += '<ol>';
+  for (const { i, score } of top5) {
+    const pct = (score * 100).toFixed(2);
+    const name = labels[i] ?? `class_${i}`;
+    html += `<li><strong>${name}</strong> — ${pct}%<div class="bar"><i style="width:${(score / maxScore * 100).toFixed(1)}%"></i></div></li>`;
+  }
+  html += '</ol>';
+  resultsEl.innerHTML = html;
+}
+
+function loadImageFromUrl(url, autoRun = false) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = async () => {
+      loadedImage = img;
+      preprocessImageNet(img, ctx);
+      btnRun.disabled = !session;
+      setStatus('图片已加载' + (autoRun ? '，正在推理…' : '，可运行推理'), session ? 'ok' : '');
+      if (autoRun && session) await onRunClick();
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error('图片加载失败: ' + url));
+    img.src = url;
+  });
+}
+
+async function onRunClick() {
+  if (!session || !loadedImage) return;
+  btnRun.disabled = true;
+  setStatus('推理中…');
+  try {
+    const tPre = performance.now();
+    const { tensor } = preprocessImageNet(loadedImage, ctx);
+    const preprocessMs = performance.now() - tPre;
+    const { outputMap, inferMs } = await runInference(tensor);
+    parseOutput(outputMap, inferMs, preprocessMs);
+    setStatus(`完成 · ${inferMs.toFixed(1)} ms`, 'ok');
+  } catch (err) {
+    console.error(err);
+    setStatus('推理失败: ' + err.message, 'err');
+    resultsEl.innerHTML = `<p class="timing err">${err.message}<br>若缺模型请运行 scripts/download.ps1</p>`;
+  } finally {
+    btnRun.disabled = false;
+  }
+}
+
+async function onModelChange() {
+  const next = modelSelect.value;
+  if (next === currentModelKey && session) return;
+  currentModelKey = next;
+  session = null;
+  btnRun.disabled = true;
+  try {
+    await createSession();
+    btnRun.disabled = !loadedImage;
+    if (loadedImage) await onRunClick();
+  } catch (err) {
+    setStatus('模型加载失败: ' + err.message + ' — 运行 download.ps1 下载', 'err');
+  }
+}
+
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    loadedImage = img;
+    preprocessImageNet(img, ctx);
+    btnRun.disabled = !session;
+    setStatus(session ? '图片已加载，可运行推理' : '等待模型…', session ? 'ok' : '');
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => { setStatus('图片加载失败', 'err'); URL.revokeObjectURL(url); };
+  img.src = url;
+});
+
+btnRun.addEventListener('click', onRunClick);
+btnSample.addEventListener('click', () => loadImageFromUrl(SAMPLE_HEADPHONES_URL, false));
+btnSampleDog.addEventListener('click', () => loadImageFromUrl(SAMPLE_DOG_URL, false));
+modelSelect.addEventListener('change', onModelChange);
+
+(async function init() {
+  try {
+    await loadLabels();
+    await createSession();
+    modelSelect.disabled = false;
+    btnSample.disabled = false;
+    btnSampleDog.disabled = false;
+    await loadImageFromUrl(SAMPLE_DOG_URL, true);
+  } catch (err) {
+    console.error(err);
+    setStatus('初始化失败: ' + err.message + ' — 请运行 scripts/download.ps1', 'err');
+    modelSelect.disabled = false;
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebGL Shader 沙盒 · 教程</title>
+  <style>
+    :root {
+      --bg: #0a0c12;
+      --panel: #0d1117;
+      --border: #21262d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --pink: #ff79c6;
+      --warm: #ffb86c;
+      --mono: Consolas, "Cascadia Mono", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.65 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
+    header { margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 8px; }
+    header p { color: var(--muted); font-size: 0.95rem; }
+    header a { color: var(--accent); }
+    nav.toc {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 32px;
+      font-size: 0.9rem;
+    }
+    nav.toc ol { padding-left: 1.3em; }
+    nav.toc li { margin: 6px 0; }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    section { margin-bottom: 36px; }
+    h2 {
+      font-size: 1.2rem;
+      color: var(--green);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 1rem; color: var(--warm); margin: 18px 0 8px; }
+    p, li { color: #c9d1d9; margin-bottom: 10px; }
+    ul, ol { padding-left: 1.3em; margin-bottom: 12px; }
+    li { margin: 5px 0; }
+    strong { color: var(--text); }
+    code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      color: var(--pink);
+      background: #161b22;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    pre {
+      background: #05080c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      color: #e6edf3;
+      margin: 12px 0;
+    }
+    pre .comment { color: #6b7088; }
+    pre .kw { color: var(--accent); }
+    pre .type { color: var(--warm); }
+    .diagram {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.6;
+      color: var(--green);
+      white-space: pre-wrap;
+      margin: 14px 0;
+    }
+    .box {
+      border-left: 3px solid var(--accent);
+      background: #161b22;
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      margin: 14px 0;
+      font-size: 0.92rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      margin: 12px 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #161b22; color: var(--accent); }
+    .exercise {
+      border: 1px solid #3fb95044;
+      background: #1a2e1a;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 14px 0;
+    }
+    .exercise h4 { color: var(--green); font-size: 0.85rem; margin-bottom: 8px; }
+    footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>WebGL Shader 学习沙盒 · 教程</h1>
+      <p>
+        配套 Demo：<a href="/">Shader Sandbox（Vite 主页）</a>
+        · 仓库路径 <code>webgl/2026-06-21-shader-learning-sandbox</code>
+      </p>
+    </header>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ol>
+        <li><a href="#what">这 Demo 要干什么</a></li>
+        <li><a href="#pipeline">GPU 渲染流水线（一图看懂）</a></li>
+        <li><a href="#stack">React Three Fiber 扮演什么角色</a></li>
+        <li><a href="#files">文件地图：改哪里、看什么</a></li>
+        <li><a href="#vars">Attribute / Uniform / Varying</a></li>
+        <li><a href="#vertex">Vertex Shader 逐行讲</a></li>
+        <li><a href="#fragment">Fragment Shader 逐行讲</a></li>
+        <li><a href="#bridge">React → GPU：useFrame 桥梁</a></li>
+        <li><a href="#mouse">鼠标怎么进 Shader</a></li>
+        <li><a href="#labs">动手实验（5 个）</a></li>
+        <li><a href="#next">下一步学什么</a></li>
+      </ol>
+    </nav>
+
+    <section id="what">
+      <h2>1. 这 Demo 要干什么</h2>
+      <p>
+        这是一个<strong>最小但完整</strong>的自定义 Shader 学习环境：一个会转的球体，颜色由<strong>你自己写的 GLSL</strong> 决定，而不是 Three.js 内置的
+        <code>MeshStandardMaterial</code>。
+      </p>
+      <p>你要建立的核心心智：</p>
+      <div class="box">
+        <strong>React 管「什么时候、传什么数」</strong>（Uniform、旋转）<br />
+        <strong>GLSL 管「每个像素算什么颜色」</strong>（Fragment Shader）<br />
+        两者通过 <code>ShaderMaterial</code> 绑在一起。
+      </div>
+      <p>
+        改 <code>src/shaders/fragmentShader.ts</code> 里的一行数学，保存后浏览器<strong>立刻</strong>变样 — 这是学 Shader 最快的方式。
+      </p>
+    </section>
+
+    <section id="pipeline">
+      <h2>2. GPU 渲染流水线（一图看懂）</h2>
+      <p>每一帧，GPU 大致做这些事：</p>
+      <div class="diagram">几何体顶点 (position, uv, normal)     ← Attribute，来自 SphereGeometry
+        ↓
+   Vertex Shader（顶点着色器）          ← vertexShader.ts
+   · 3D 位置 → 屏幕位置 gl_Position
+   · 写出 vUv、vNormal                 ← Varying，传给下一 stage
+        ↓
+   光栅化（GPU 硬件）                   ← 把三角形拆成像素，Varying 插值
+        ↓
+   Fragment Shader（片元着色器）      ← fragmentShader.ts  ★ 你主要改这里
+   · 每个像素算一次 gl_FragColor
+   · 读 uTime、uMousePosition          ← Uniform，来自 React
+        ↓
+   屏幕上的彩色球体</div>
+      <p>
+        <strong>Vertex</strong> 跑在<strong>顶点</strong>上（球体约几千个顶点）；<strong>Fragment</strong> 跑在<strong>像素</strong>上（可能上百万次）。视觉效果主要在 Fragment 里做。
+      </p>
+    </section>
+
+    <section id="stack">
+      <h2>3. React Three Fiber 扮演什么角色</h2>
+      <table>
+        <tr><th>层</th><th>文件</th><th>干什么</th></tr>
+        <tr><td>React UI</td><td><code>App.tsx</code></td><td>布局、Canvas、鼠标坐标、OrbitControls</td></tr>
+        <tr><td>R3F 场景</td><td><code>ShaderSphere.tsx</code></td><td>mesh + shaderMaterial + useFrame</td></tr>
+        <tr><td>GLSL</td><td><code>shaders/*.ts</code></td><td>真正在 GPU 执行的字符串</td></tr>
+        <tr><td>Three.js</td><td>（底层）</td><td>编译 GLSL、上传 Uniform、发 draw call</td></tr>
+      </table>
+      <p>
+        没有 R3F 也能写 WebGL，但要手写 scene/camera/renderer 循环。R3F 让你用 JSX 声明 3D，用 <code>useFrame</code> 挂钩渲染循环 — 和写 React 组件一样自然。
+      </p>
+    </section>
+
+    <section id="files">
+      <h2>4. 文件地图</h2>
+      <pre>src/
+├── App.tsx                 ← 入口：Canvas、鼠标 → mouseUv
+├── components/
+│   └── ShaderSphere.tsx    ← mesh + uniforms + useFrame
+└── shaders/
+    ├── vertexShader.ts     ← 顶点 GLSL 字符串
+    └── fragmentShader.ts   ← 片元 GLSL 字符串 ★ 首选修改</pre>
+      <p>运行：<code>npm run dev</code> → http://127.0.0.1:5173</p>
+    </section>
+
+    <section id="vars">
+      <h2>5. 三类 GLSL 变量（必背）</h2>
+      <table>
+        <tr><th>类型</th><th>谁写</th><th>谁读</th><th>本 Demo 例子</th></tr>
+        <tr>
+          <td><strong>Attribute</strong></td>
+          <td>几何体</td>
+          <td>Vertex Shader</td>
+          <td><code>position</code> <code>uv</code> <code>normal</code>（Three 自动注入）</td>
+        </tr>
+        <tr>
+          <td><strong>Uniform</strong></td>
+          <td>CPU / React</td>
+          <td>Vertex 或 Fragment</td>
+          <td><code>uTime</code> <code>uMousePosition</code> <code>modelViewMatrix</code></td>
+        </tr>
+        <tr>
+          <td><strong>Varying</strong></td>
+          <td>Vertex Shader</td>
+          <td>Fragment Shader（插值后）</td>
+          <td><code>vUv</code> <code>vNormal</code></td>
+        </tr>
+      </table>
+      <div class="box">
+        <strong>记忆口诀：</strong>Attribute 每顶点不同；Uniform 整帧相同；Varying 顶点写出、像素读到的是插值结果。
+      </div>
+    </section>
+
+    <section id="vertex">
+      <h2>6. Vertex Shader 逐行讲</h2>
+      <p>文件：<code>src/shaders/vertexShader.ts</code></p>
+      <pre><span class="comment">// 声明 Varying：会传给 Fragment Shader</span>
+<span class="kw">varying</span> <span class="type">vec2</span> vUv;
+<span class="kw">varying</span> <span class="type">vec3</span> vNormal;
+
+<span class="kw">void</span> main() {
+  <span class="comment">// Attribute uv → Varying vUv（球面经纬度参数化到 0~1）</span>
+  vUv = uv;
+
+  <span class="comment">// Attribute normal，经 normalMatrix 变到视图空间</span>
+  vNormal = normalize(normalMatrix * normal);
+
+  <span class="comment">// Attribute position × MVP → 屏幕裁剪坐标（必写 gl_Position）</span>
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}</pre>
+      <p>
+        本 Demo 的 Vertex Shader<strong>故意保持最小</strong>：只做标准变换 + 传递 UV/法线。复杂变形（波浪、溶解）也可以写在这里，改 <code>position</code> 再赋给 <code>gl_Position</code>。
+      </p>
+    </section>
+
+    <section id="fragment">
+      <h2>7. Fragment Shader 逐行讲</h2>
+      <p>文件：<code>src/shaders/fragmentShader.ts</code> — 视觉效果的核心。</p>
+
+      <h3>Uniform 声明</h3>
+      <pre><span class="kw">uniform</span> <span class="type">float</span> uTime;           <span class="comment">// React 每帧写入：过了多少秒</span>
+<span class="kw">uniform</span> <span class="type">vec2</span> uMousePosition; <span class="comment">// React 写入：鼠标 UV 0~1</span>
+<span class="kw">varying</span> <span class="type">vec2</span> vUv;            <span class="comment">// 来自顶点，像素级插值</span>
+<span class="kw">varying</span> <span class="type">vec3</span> vNormal;</pre>
+
+      <h3>① 彩虹波纹（时间 + UV）</h3>
+      <pre>float wave = sin(vUv.x * 10.0 + uTime * 2.0) * 0.5 + 0.5;</pre>
+      <p>
+        <code>vUv.x</code> 是横向坐标，<code>uTime</code> 让条纹随时间移动。改 <code>10.0</code> → 条纹密度；改 <code>2.0</code> → 动画速度。
+      </p>
+
+      <h3>② 鼠标热点</h3>
+      <pre>float dist = length(vUv - uMousePosition);
+float mouseGlow = 0.35 / (dist * 6.0 + 0.08);</pre>
+      <p>
+        当前像素 UV 与鼠标 UV 的距离越近，<code>mouseGlow</code> 越大 — 演示 Uniform 交互。改 <code>6.0</code> 控制热点范围。
+      </p>
+
+      <h3>③ 法线明暗（体积感）</h3>
+      <pre>float ndotl = dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)) * 0.5 + 0.5;</pre>
+      <p>用 Varying <code>vNormal</code> 做假光照：朝向相机的面更亮。没有这一步，球面会像扁平色块。</p>
+
+      <h3>④ 输出</h3>
+      <pre>gl_FragColor = vec4(finalColor, 1.0);</pre>
+      <p>每个 Fragment 必须写 <code>gl_FragColor</code>（WebGL1 写法；WebGL2 可用 <code>out vec4 fragColor</code>）。</p>
+    </section>
+
+    <section id="bridge">
+      <h2>8. React → GPU：useFrame 桥梁</h2>
+      <p>文件：<code>src/components/ShaderSphere.tsx</code></p>
+      <pre><span class="comment">// 1. 创建 Uniform 初值（只建一次）</span>
+const uniforms = useMemo(() => ({
+  uTime: { value: 0 },
+  uMousePosition: { value: new THREE.Vector2(0.5, 0.5) },
+}), []);
+
+<span class="comment">// 2. 每帧更新 — R3F 在 requestAnimationFrame 里调用</span>
+useFrame((state) => {
+  mat.uniforms.uTime.value = state.clock.elapsedTime;
+  mat.uniforms.uMousePosition.value.copy(mouseUv);
+  mesh.rotation.y = state.clock.elapsedTime * 0.35;
+});
+
+<span class="comment">// 3. 绑到 material</span>
+&lt;shaderMaterial
+  vertexShader={vertexShaderCode}
+  fragmentShader={fragmentShaderCode}
+  uniforms={uniforms}
+/&gt;</pre>
+      <div class="diagram">React state (mouseUv)
+    ↓  props
+useFrame 每帧
+    ↓  mat.uniforms.uTime.value = …
+Three.js 上传 GPU
+    ↓
+Fragment Shader 读 uniform uTime</div>
+      <p>
+        <strong>关键：</strong>GLSL 里的 <code>uniform float uTime</code> 名字必须和 JS 里 <code>uniforms.uTime</code> 一致，否则传不进去。
+      </p>
+    </section>
+
+    <section id="mouse">
+      <h2>9. 鼠标怎么进 Shader</h2>
+      <p>文件：<code>src/App.tsx</code></p>
+      <pre>const x = (e.clientX - rect.left) / rect.width;   // 0~1 左→右
+const y = 1 - (e.clientY - rect.top) / rect.height; // 0~1 下→上（与 UV 一致）
+setMouseUv(new THREE.Vector2(x, y));</pre>
+      <p>
+        浏览器鼠标 Y 轴向下，而 UV 通常 Y 向上，所以要 <code>1 - …</code>。这样 Fragment 里的 <code>vUv</code> 和 <code>uMousePosition</code> 在同一坐标系，热点才对得上。
+      </p>
+    </section>
+
+    <section id="labs">
+      <h2>10. 动手实验（按顺序做）</h2>
+
+      <div class="exercise">
+        <h4>实验 A · UV 可视化（30 秒）</h4>
+        <p>在 <code>fragmentShader.ts</code> 的 <code>main()</code> 末尾改成：</p>
+        <pre>gl_FragColor = vec4(vUv, 0.0, 1.0);</pre>
+        <p>左下黑、右上红绿渐变 — 确认 Varying 插值正常。</p>
+      </div>
+
+      <div class="exercise">
+        <h4>实验 B · 只留时间动画</h4>
+        <pre>gl_FragColor = vec4(vec3(sin(uTime) * 0.5 + 0.5), 1.0);</pre>
+        <p>整球同步明暗呼吸 — 确认 Uniform <code>uTime</code> 在动。</p>
+      </div>
+
+      <div class="exercise">
+        <h4>实验 C · 加大鼠标热点</h4>
+        <p>把 <code>dist * 6.0</code> 改成 <code>dist * 2.0</code>，移动鼠标看光斑变大。</p>
+      </div>
+
+      <div class="exercise">
+        <h4>实验 D · 在 Vertex 里改形状</h4>
+        <p>在 vertex shader 的 <code>main()</code> 里，<code>gl_Position</code> 之前加：</p>
+        <pre>vec3 pos = position * (1.0 + 0.08 * sin(uTime * 3.0 + uv.y * 10.0));</pre>
+        <p>并把 <code>vec4(position, 1.0)</code> 改成 <code>vec4(pos, 1.0)</code>（需在 vertex 也声明 <code>uniform float uTime;</code>）。</p>
+      </div>
+
+      <div class="exercise">
+        <h4>实验 E · 新增 Uniform</h4>
+        <ol>
+          <li>JS：<code>uIntensity: { value: 1.5 }</code> 加进 uniforms</li>
+          <li>GLSL：<code>uniform float uIntensity;</code>，乘到 <code>finalColor</code> 上</li>
+          <li>用 <code>useFrame</code> 或 React slider 改 value — 走通完整 CPU→GPU 链路</li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="next">
+      <h2>11. 下一步学什么</h2>
+      <ul>
+        <li><strong>ShaderMaterial + 纹理</strong> — <code>uniform sampler2D uMap</code> 贴图</li>
+        <li><strong>PostProcessing</strong> — 全屏 Fragment 后处理（辉光、色差）</li>
+        <li><strong>WebGPU / WGSL</strong> — 见仓库 <code>gaussian-splat/2026-06-07-webgpu-edge-ai-ppt</code></li>
+        <li><strong>3DGS</strong> — Gaussian Splatting 的 splat shader 本质是自定义 Fragment/Vertex</li>
+      </ul>
+      <p>
+        本沙盒的目的：让你在改 GLSL 字符串时<strong>不害怕</strong> — 因为你知道 Attribute / Uniform / Varying 各自从哪来、到哪去。
+      </p>
+    </section>
+
+    <footer>
+      <p><a href="/">← 回到 Shader Sandbox 动手玩</a></p>
+    </footer>
+  </div>
+</body>
+</html>

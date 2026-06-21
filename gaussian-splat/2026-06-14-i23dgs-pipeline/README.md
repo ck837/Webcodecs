@@ -1,11 +1,36 @@
 # i23DGS: Image to 3D Gaussian Splatting
 
+i23DGS 是 `dj` 仓库的旗舰项目：用一个商品图到 3DGS 展示的工作台，把三条主线串起来。
+
+| 主线 | 在 i23DGS 中的体现 |
+|------|-------------------|
+| WebCodecs / WebGPU / 实时媒体管线 | 图片输入、Canvas 渲染、相机动画、WebM 录制与导出 |
+| 3D Gaussian Splatting / Web 端神经渲染 | `.splat` / `.ksplat` / `.ply` 加载、Three.js 交互展示、真实样例模型 |
+| AI 多媒体 Workflow / 可视化编排 | 上传、抠图、Provider 生成、job 状态机、资产结果管理 |
+
+它的目标不是在本地脚本里伪装工业级 3D 重建，而是先把前端、后端、AI Provider 和展示体验打成一条可替换、可演示、可继续升级的工程链路。
+
+## 当前能力
+
 一个面向商品图的自动化流水线与交互展示 Demo：
 
 1. Node.js TypeScript API 接收商品图片上传。
 2. Python `rembg` 脚本输出透明 PNG。
 3. 标准化 3DGS Provider 接口把透明 PNG 交给本地 Mock 或远端 AI 节点。
 4. React + Three.js + GaussianSplats3D 加载 `.splat`，提供 OrbitControls、相机关键帧和 WebM 录制。
+
+项目讲解幻灯片：[slides.html](./slides.html)。
+
+## 推荐演示图片
+
+主样例建议使用：
+
+- 原图：`public/sample/black-headphones-unsplash.jpg`
+- 缩放输入：`data/uploads/demo-headphones-small.png`
+- 抠图结果：`data/matted/demo-headphones.png`
+- 本地 baseline：`data/models/demo-headphones.splat`
+
+选择耳机作为主样例，是因为它有清晰轮廓、弧形头梁、左右耳罩厚度和黑色材质高光，比平面海报或简单杯子更能体现 3DGS Viewer 的旋转展示价值。
 
 ## 运行
 

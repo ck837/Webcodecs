@@ -1,0 +1,2 @@
+*.onnx
+!imagenet_classes.txt

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>电影质感 AI 视频增强器 · WebGL Demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app-layout">
+      <div id="viewport-wrap">
+        <div id="split-labels">
+          <span class="split-label split-label--raw">原视频</span>
+          <span class="split-label split-label--enhanced">电影增强</span>
+        </div>
+        <div id="split-divider" aria-hidden="true"></div>
+        <div id="overlay">
+          <h1>实时电影质感 AI 视频增强器</h1>
+          <p id="status">正在初始化 WebGL 管线…</p>
+          <p class="hint">
+            左：原片 · 中：增强 · 右：参数。MP4 放 <code>public/sample.mp4</code> 可替换。
+          </p>
+        </div>
+      </div>
+      <div id="controls-panel-mount"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

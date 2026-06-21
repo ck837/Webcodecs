@@ -1,0 +1,112 @@
+{
+  "title": "Agent invoke trace",
+  "steps": [
+    {
+      "from": "__start__",
+      "to": "generator",
+      "node": "generator",
+      "update": {
+        "iteration": 1,
+        "log": [
+          "generator#1"
+        ],
+        "has_bug": false
+      }
+    },
+    {
+      "from": "generator",
+      "to": "evaluator",
+      "node": "evaluator",
+      "update": {
+        "has_bug": true,
+        "log": [
+          "generator#1",
+          "evaluator"
+        ],
+        "iteration": 1
+      }
+    },
+    {
+      "from": "evaluator",
+      "to": "generator",
+      "node": "generator",
+      "update": {
+        "iteration": 2,
+        "log": [
+          "generator#1",
+          "evaluator",
+          "generator#2"
+        ],
+        "has_bug": true
+      }
+    },
+    {
+      "from": "generator",
+      "to": "evaluator",
+      "node": "evaluator",
+      "update": {
+        "has_bug": true,
+        "log": [
+          "generator#1",
+          "evaluator",
+          "generator#2",
+          "evaluator"
+        ],
+        "iteration": 2
+      }
+    },
+    {
+      "from": "evaluator",
+      "to": "generator",
+      "node": "generator",
+      "update": {
+        "iteration": 3,
+        "log": [
+          "generator#1",
+          "evaluator",
+          "generator#2",
+          "evaluator",
+          "generator#3"
+        ],
+        "has_bug": true
+      }
+    },
+    {
+      "from": "generator",
+      "to": "evaluator",
+      "node": "evaluator",
+      "update": {
+        "has_bug": false,
+        "log": [
+          "generator#1",
+          "evaluator",
+          "generator#2",
+          "evaluator",
+          "generator#3",
+          "evaluator"
+        ],
+        "iteration": 3
+      }
+    },
+    {
+      "from": "evaluator",
+      "to": "__end__",
+      "node": "__end__",
+      "update": {
+        "route": "exit"
+      }
+    }
+  ],
+  "final": {
+    "iteration": 3,
+    "log": [
+      "generator#1",
+      "evaluator",
+      "generator#2",
+      "evaluator",
+      "generator#3",
+      "evaluator"
+    ],
+    "has_bug": false
+  }
+}

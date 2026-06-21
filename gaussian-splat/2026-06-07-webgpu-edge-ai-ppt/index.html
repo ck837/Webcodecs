@@ -232,6 +232,68 @@
       line-height: 1.5;
     }
 
+    .goal-box {
+      margin-top: 22px;
+      padding: 18px 22px;
+      border: 1px solid rgba(0, 240, 255, 0.28);
+      border-radius: 8px;
+      background: rgba(0, 240, 255, 0.06);
+      font-size: clamp(19px, 2vw, 26px);
+      line-height: 1.5;
+    }
+
+    .goal-box .label {
+      display: block;
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: 14px;
+      color: var(--blue);
+      letter-spacing: 0.06em;
+    }
+
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 28px;
+    }
+
+    .roadmap-item {
+      padding: 14px 12px;
+      border: 1px solid rgba(246, 249, 252, 0.12);
+      border-radius: 8px;
+      background: #10171f;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .roadmap-item strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 15px;
+      color: var(--green);
+      margin-bottom: 6px;
+    }
+
+    .roadmap-item span {
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .why-line {
+      margin-top: 18px;
+      font-size: clamp(18px, 1.8vw, 24px);
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .why-line em {
+      color: var(--warn);
+      font-style: normal;
+      font-weight: 750;
+    }
+
     .number-list {
       counter-reset: item;
       list-style: none;
@@ -353,7 +415,8 @@
       }
 
       .grid-2,
-      .pipeline {
+      .pipeline,
+      .roadmap {
         grid-template-columns: 1fr;
       }
 
@@ -381,16 +444,45 @@
         <div class="deck-kicker">WEBGPU / SHADER / EDGE AI RENDERING</div>
         <h1>从业务封装走向显卡控制：端侧 AI 渲染的高性能破局</h1>
         <p class="subtitle">
-          <span class="hot">3DGS</span>、<span class="blue">WebGPU</span> 与多模态数据管道的底层解构
+          一份<strong>路线图</strong>：为什么前端要懂 GPU，以及从 <span class="hot">3DGS</span> 到 <span class="blue">WebGPU</span> 的 5 层能力栈
         </p>
-        <div class="speaker">演讲人：[你的名字 / 前端工程团队]</div>
+        <div class="speaker">演讲人：[你的名字 / 前端工程团队] · 方向键 / 空格翻页</div>
       </section>
 
       <section>
-        <h2>核心解构：Shader 与并行计算</h2>
+        <h2>这份 PPT 要干什么？</h2>
+        <div class="goal-box">
+          <span class="label">ONE-SENTENCE GOAL</span>
+          解释：<strong>做端侧 AI + 3D 渲染时，为什么不能只调 API，而必须理解 GPU 底层</strong> — 以及每一层技术各自解决什么问题。
+        </div>
+
+        <p class="why-line">
+          你不是来背术语的。目标是建立一张<strong>心智地图</strong>：从「调 LangChain」升级到「能控显存、写 Shader、跑满 60 帧」。
+        </p>
+
+        <div class="roadmap">
+          <div class="roadmap-item"><strong>01 Shader</strong><span>GPU 怎么并行算像素</span></div>
+          <div class="roadmap-item"><strong>02 WebGPU</strong><span>浏览器如何直接指挥显卡</span></div>
+          <div class="roadmap-item"><strong>03 Buffer</strong><span>数据怎么进显存、不卡帧</span></div>
+          <div class="roadmap-item"><strong>04 框架层</strong><span>Three.js / WebXR 管什么</span></div>
+          <div class="roadmap-item"><strong>05 战略</strong><span>为什么选硬核路径</span></div>
+        </div>
+
         <div class="statement">
-          <strong>GPU</strong> 是成千上万个核心同时开工的并行机器。
-          <strong>Shader</strong> 是直接运行在 GPU 上的像素 / 顶点计算程序。
+          阅读方式：每页先看<strong>「本页要回答」</strong>，再看技术细节。五页走完，你应该能向别人讲清整条链路。
+        </div>
+      </section>
+
+      <section>
+        <h2>第 1 步：Shader 与并行计算</h2>
+        <div class="goal-box">
+          <span class="label">本页要回答</span>
+          CPU 写 <code>for</code> 循环画像素为什么慢？GPU 的 <strong>Shader</strong> 换了什么思路？
+        </div>
+
+        <div class="statement">
+          <strong>GPU</strong> = 成千上万个核心同时开工的并行机器。
+          <strong>Shader</strong> = 跑在 GPU 上的「每个像素各算各的」小程序。
         </div>
 
         <div class="grid-2">
@@ -418,13 +510,21 @@
         <p>
           核心心智：输入 <code>UV</code> 坐标与时间 <code>t</code>，GPU 在一个帧周期内把数学场喷刷成屏幕。
         </p>
+        <p class="why-line">
+          <em>为什么重要：</em>3DGS、神经渲染、后处理特效 — 本质都是 Shader 在改像素颜色。不懂并行，就只会黑盒调库。
+        </p>
       </section>
 
       <section>
-        <h2>核心解构：WebGPU / WGSL</h2>
+        <h2>第 2 步：WebGPU / WGSL</h2>
+        <div class="goal-box">
+          <span class="label">本页要回答</span>
+          浏览器里除了 WebGL，为什么还要 <strong>WebGPU</strong>？它和端侧 AI 推理有什么关系？
+        </div>
+
         <div class="statement">
-          <strong>WebGPU</strong> 是显式图形与计算 API，直接映射现代 GPU 硬件。
-          <strong>WGSL</strong> 是它的专用着色器语言。
+          <strong>WebGPU</strong> = 显式图形与计算 API，直接映射现代 GPU 硬件。
+          <strong>WGSL</strong> = 写 Shader / Compute 的专用语言。
         </div>
 
         <ul>
@@ -440,13 +540,21 @@
           <div class="pipe-node">Compute Pass<span>AI / 物理 / 点云计算</span></div>
           <div class="pipe-node">Queue Submit<span>批量提交，减少 CPU 抖动</span></div>
         </div>
+        <p class="why-line">
+          <em>为什么重要：</em>WebGL 像老式自动挡；WebGPU 让你自己挂挡 — 多线程提交、Compute Shader 跑矩阵乘，才是 LLM/VLM 端侧加速的基础。
+        </p>
       </section>
 
       <section>
-        <h2>核心解构：Buffer / Bind Group</h2>
+        <h2>第 3 步：Buffer / Bind Group</h2>
+        <div class="goal-box">
+          <span class="label">本页要回答</span>
+          点云、视频帧、模型权重怎么<strong>送进 GPU</strong>？为什么对齐和 Zero-Copy 决定会不会掉帧？
+        </div>
+
         <div class="statement">
-          <strong>Buffer</strong> 是显存中的连续内存块。
-          <strong>Bind Group</strong> 是 CPU 与 GPU 之间的显存指针和内存布局接口契约。
+          <strong>Buffer</strong> = 显存里的连续内存块。
+          <strong>Bind Group</strong> = CPU 告诉 GPU「数据在哪个槽、怎么读」的契约。
         </div>
 
         <div class="grid-2">
@@ -474,14 +582,21 @@
   -> BindGroup layout contract
   -> WGSL storage/uniform access
   -> Render / Compute output</div>
+        <p class="why-line">
+          <em>为什么重要：</em>90% 的性能事故是「拷了太多次内存」。精通 Buffer 才能把 3DGS 点云、传感器流直接喂给 GPU。
+        </p>
       </section>
 
       <section>
-        <h2>降维交集：Three.js / WebXR 的真实关系</h2>
+        <h2>第 4 步：Three.js / WebXR 管什么</h2>
+        <div class="goal-box">
+          <span class="label">本页要回答</span>
+          日常写 Three.js 时，<strong>哪些该交给框架</strong>，哪些必须自己下沉到 Shader / WebGPU？
+        </div>
 
         <div class="statement">
-          <span class="blue">Three.js / WebXR</span> 是应用层外壳：场景挂载、双眼对齐、相机控制。
-          <span class="hot">Shader / WebGPU / Buffer</span> 才是核心发动机。
+          <span class="blue">Three.js / WebXR</span> = 应用层外壳（场景、相机、VR 双眼）。
+          <span class="hot">Shader / WebGPU / Buffer</span> = 真正决定画质和帧率的发动机。
         </div>
 
         <ol class="number-list">
@@ -496,10 +611,17 @@
           <div class="pipe-node">WebGPU<span>现代 GPU 指令接口</span></div>
           <div class="pipe-node">WGSL<span>最终执行的并行程序</span></div>
         </div>
+        <p class="why-line">
+          <em>为什么重要：</em>框架帮你搭舞台，但 3DGS splat、AI 材质、XR 不晕 — 都要在 Shader 和显存层动手。
+        </p>
       </section>
 
       <section>
-        <h2>战略总结：为什么走硬核路径 B</h2>
+        <h2>第 5 步：战略总结 — 为什么走硬核路径</h2>
+        <div class="goal-box">
+          <span class="label">本页要回答</span>
+          五层学完后，<strong>你的不可替代性</strong>在哪里？和「只会调 API 封装」差在哪？
+        </div>
 
         <ul>
           <li>常规 AI 封装框架，例如 <span class="blue">LangChain / LangGraph</span>，生命周期极短，正在随着模型能力进化被快速压缩。</li>
@@ -510,6 +632,14 @@
         <div class="statement">
           转型宣示：攻克 <strong>WebGPU</strong>、<strong>Shader</strong> 与 <strong>显存管道</strong>，
           成为最懂前沿算法消费端落地、能榨干终端 <span class="danger">60 / 90 帧</span> 性能的不可替代超级架构师。
+        </div>
+
+        <div class="roadmap" style="margin-top:24px">
+          <div class="roadmap-item"><strong>Shader</strong><span>并行算像素</span></div>
+          <div class="roadmap-item"><strong>WebGPU</strong><span>控显卡 + Compute</span></div>
+          <div class="roadmap-item"><strong>Buffer</strong><span>数据进显存</span></div>
+          <div class="roadmap-item"><strong>框架</strong><span>场景与 XR</span></div>
+          <div class="roadmap-item"><strong>落地</strong><span>3DGS / 端侧 AI</span></div>
         </div>
       </section>
     </div>
