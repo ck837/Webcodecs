@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI原生产品工程师（视觉与渲染方向）三年进阶探索器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 400px;
+            overflow: hidden;
+        }
+        .stage-btn {
+            transition: all 0.3s ease;
+        }
+        .stage-btn.active {
+            background-color: #fef3c7; 
+            border-left-width: 4px;
+            border-color: #d97706; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateX(4px);
+        }
+        .fade-in {
+            animation: fadeIn 0.4s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+    <!-- Chosen Palette: Warm Neutrals (Stone base, Amber accents, Slate typography) -->
+    <!-- Application Structure Plan: The SPA is structured as an interactive dashboard. The layout features a left-side vertical timeline (navigation) and a right-side dynamic content area containing a skill radar chart and actionable task cards. This structure was chosen because a 3-year roadmap is inherently chronological; a timeline navigation allows users to clearly see their progression, while the dynamic content area prevents cognitive overload by only showing details for the currently focused stage. The mindset section is placed globally as a constant anchor. -->
+    <!-- Visualization & Content Choices: 
+         1. Concept: 3-Year Stages -> Goal: Organize & Navigate -> Method: Vertical Interactive Timeline (Tailwind HTML/CSS). Justification: Chronological nature of the data. 
+         2. Concept: Skill Evolution per Stage -> Goal: Compare/Show Change -> Method: Radar Chart (Chart.js/Canvas). Justification: Effectively shows multivariate skill distribution (Frontend, Math, Shaders, 3D, AI) shifting over time. 
+         3. Concept: Action Paths & Projects -> Goal: Inform -> Method: Dynamic Text Cards (HTML + JS updates). Justification: Clean reading experience for detailed instructions.
+         Confirming NO SVG/Mermaid used. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen">
+
+    <header class="bg-white border-b border-stone-200 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold text-stone-900 tracking-tight">AI原生产品工程师进阶探索器</h1>
+                    <p class="text-sm md:text-base text-stone-500 mt-1">视觉与渲染方向 · 三年进阶行动指南</p>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg text-sm text-amber-800 flex items-center">
+                    <span class="text-xl mr-2">✦</span>
+                    <strong>核心逻辑：</strong> 不要脱离视觉产出去学底层原理。
+                </div>
+            </div>
+            <p class="mt-4 text-stone-600 max-w-4xl text-sm leading-relaxed">
+                欢迎来到您的专属转型路线图。本交互式应用提取了从“前端拼接者”向“AI视觉缔造者”进化的核心知识体系。请在左侧时间线选择您所处的阶段，右侧将动态呈现您在该阶段的【技能重心】、【核心攻克目标】及【实战项目】。
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <nav class="lg:col-span-4 flex flex-col gap-4" id="timeline-nav">
+                <h2 class="text-lg font-semibold text-stone-800 mb-2 border-b border-stone-200 pb-2">进阶时间线</h2>
+                
+                <button data-stage="0" class="stage-btn active text-left p-4 bg-white border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-600">阶段一 (0-6个月)</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-stone-900 mt-1">建立图形直觉</h3>
+                    <p class="text-sm text-stone-500 mt-2 line-clamp-2">从“拼页面”到“造空间”，不深究底层数学，先学会用高层工具搭建 3D 场景。</p>
+                </button>
+
+                <button data-stage="1" class="stage-btn text-left p-4 bg-white border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-600">阶段二 (6-18个月)</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-stone-900 mt-1">掌握视觉灵魂</h3>
+                    <p class="text-sm text-stone-500 mt-2 line-clamp-2">降维打击与 Shader 入门。离开 JavaScript 的庇护，去直接和 GPU 沟通。</p>
+                </button>
+
+                <button data-stage="2" class="stage-btn text-left p-4 bg-white border border-stone-200 rounded-xl cursor-pointer hover:bg-stone-50">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-600">阶段三 (18-36个月)</span>
+                    </div>
+                    <h3 class="text-lg font-bold text-stone-900 mt-1">AI 流式工程与端侧</h3>
+                    <p class="text-sm text-stone-500 mt-2 line-clamp-2">构建全栈智能体验，将视觉能力与 AI 大模型的实时算力完美缝合。</p>
+                </button>
+
+                <div class="mt-8 bg-stone-100 border border-stone-200 rounded-xl p-5 shadow-inner">
+                    <h4 class="font-bold text-stone-800 flex items-center mb-3">
+                        <span class="text-amber-600 mr-2">📌</span> 总结与心态管理
+                    </h4>
+                    <ul class="text-sm text-stone-600 space-y-3">
+                        <li class="flex items-start"><span class="mr-2 text-stone-400">▪</span> <strong>不要被JD吓倒：</strong>视觉震撼力强的 Demo > 简历上的底层名词。</li>
+                        <li class="flex items-start"><span class="mr-2 text-stone-400">▪</span> <strong>接受半懂不懂：</strong>觉得像看天书是常态。先跑通代码，再慢慢领悟。</li>
+                        <li class="flex items-start"><span class="mr-2 text-stone-400">▪</span> <strong>发挥独特优势：</strong>审美和工程直觉是你不可替代的杠杆。</li>
+                    </ul>
+                </div>
+            </nav>
+
+            <section class="lg:col-span-8 flex flex-col gap-6">
+                
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 w-32 h-32 bg-amber-100 rounded-bl-full opacity-50 -z-10"></div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold text-stone-900" id="stage-title">阶段一：建立图形直觉</h2>
+                        <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-full" id="stage-time">0-6个月</span>
+                    </div>
+                    <p class="text-stone-600 font-medium mb-6 bg-stone-50 p-4 rounded-lg border-l-4 border-stone-300" id="stage-target">
+                        目标：不深究底层数学，先学会用高层工具搭建 3D 场景，建立对三维空间、相机和光影的感性认知。
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                        <div>
+                            <h3 class="text-sm font-bold uppercase tracking-wider text-stone-500 mb-4 text-center">能力结构雷达 (动态演进)</h3>
+                            <div class="chart-container">
+                                <canvas id="skillRadarChart"></canvas>
+                            </div>
+                            <p class="text-xs text-center text-stone-400 mt-2">图表展示当前阶段所需重点发力的技能维度权重。</p>
+                        </div>
+
+                        <div class="flex flex-col gap-4 h-full" id="action-paths">
+                            
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const roadmapData = [
+            {
+                title: "建立图形直觉",
+                time: "0-6个月",
+                target: "目标：不深究底层数学，先学会用高层工具搭建 3D 场景，建立对三维空间、相机和光影的感性认知。",
+                radarData: [90, 70, 10, 20, 10], 
+                paths: [
+                    {
+                        name: "Three.js 扫盲与实战",
+                        resource: "Three.js Journey (Bruno Simon)",
+                        core: "Scene, Camera, Mesh, Light",
+                        project: "将个人博客用 Three.js 重写为浏览器鼠标漫游的 3D 展厅。"
+                    },
+                    {
+                        name: "后期处理 (Post-Processing)",
+                        resource: "官方文档与社区案例",
+                        core: "EffectComposer 掌握，加滤镜思维",
+                        project: "给 3D 模型加上 Bloom (泛光) 和 Depth of Field (景深)。"
+                    }
+                ]
+            },
+            {
+                title: "掌握视觉灵魂",
+                time: "6-18个月",
+                target: "目标：这是最痛苦也是最核心的一步跨越。你必须离开 JavaScript 的庇护，去直接和 GPU 沟通。",
+                radarData: [60, 85, 75, 30, 50],
+                paths: [
+                    {
+                        name: "GLSL 启蒙",
+                        resource: "The Book of Shaders (Patricio Gonzalez Vivo)",
+                        core: "转变思维：为每个像素写颜色计算规则",
+                        project: "在 shadertoy.com 纯用数学代码画出动态云彩或水波纹。"
+                    },
+                    {
+                        name: "Shader 引入前端",
+                        resource: "Three.js ShaderMaterial",
+                        core: "Shader 与 WebGL 框架结合",
+                        project: "接收 AI 视频做纹理，手写 Fragment Shader 实现代码雨或失真特效。"
+                    },
+                    {
+                        name: "有目的的补数学",
+                        resource: "3Blue1Brown《线性代数的本质》",
+                        core: "向量点乘、矩阵变换",
+                        project: "只看图形化解释，不扣计算过程，解决坐标变换卡点。"
+                    }
+                ]
+            },
+            {
+                title: "AI 流式工程与端侧整合",
+                time: "18-36个月",
+                target: "目标：将你的视觉能力与 AI 大模型的实时算力缝合，形成真正的智能化、多模态“产品”。",
+                radarData: [70, 95, 85, 95, 70],
+                paths: [
+                    {
+                        name: "流式数据与 Agent 编排",
+                        resource: "Vercel AI SDK, SSE, LangGraph",
+                        core: "多步 Workflow 编排，SSE 流式传输",
+                        project: "开发具身智能交互界面：Agent 思考后流式返回指令，3D角色实时反馈动作。"
+                    },
+                    {
+                        name: "向底层与端侧下探",
+                        resource: "WebGPU, Wasm, Transformers.js",
+                        core: "脱离云端，榨干本地硬件性能",
+                        project: "端侧AI视觉引擎：利用本地 GPU 跑轻量视觉大模型，结果实时驱动 WebGL 粒子特效。"
+                    }
+                ]
+            }
+        ];
+
+        let currentState = 0;
+        let radarChartInstance = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            updateUI(0);
+
+            const buttons = document.querySelectorAll('.stage-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const stageIndex = parseInt(e.currentTarget.getAttribute('data-stage'));
+                    if (stageIndex !== currentState) {
+                        
+                        buttons.forEach(b => b.classList.remove('active'));
+                        e.currentTarget.classList.add('active');
+                        
+                        currentState = stageIndex;
+                        updateUI(stageIndex);
+                    }
+                });
+            });
+        });
+
+        function initChart() {
+            const ctx = document.getElementById('skillRadarChart').getContext('2d');
+            
+            Chart.defaults.font.family = "'Noto Sans SC', sans-serif";
+            Chart.defaults.color = '#78716c';
+
+            radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['前端工程基础', '3D高层API (Three.js)', '底层着色器 (GLSL)', 'AI 编排与流式', '图形数学基础'],
+                    datasets: [{
+                        label: '技能权重 (%)',
+                        data: roadmapData[0].radarData,
+                        backgroundColor: 'rgba(217, 119, 6, 0.2)',
+                        borderColor: 'rgba(217, 119, 6, 0.8)',
+                        pointBackgroundColor: 'rgba(217, 119, 6, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(217, 119, 6, 1)',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(0, 0, 0, 0.05)' },
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                            pointLabels: {
+                                font: { size: 11, weight: 'bold' },
+                                color: '#57534e'
+                            },
+                            ticks: {
+                                display: false,
+                                min: 0,
+                                max: 100,
+                                stepSize: 20
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(28, 25, 23, 0.9)',
+                            padding: 12,
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 13 },
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.r;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateUI(index) {
+            const data = roadmapData[index];
+            
+            const titleEl = document.getElementById('stage-title');
+            const timeEl = document.getElementById('stage-time');
+            const targetEl = document.getElementById('stage-target');
+            const pathsContainer = document.getElementById('action-paths');
+
+            titleEl.textContent = `阶段${['一','二','三'][index]}：${data.title}`;
+            timeEl.textContent = data.time;
+            targetEl.textContent = data.target;
+
+            titleEl.classList.remove('fade-in');
+            targetEl.classList.remove('fade-in');
+            void titleEl.offsetWidth; 
+            titleEl.classList.add('fade-in');
+            targetEl.classList.add('fade-in');
+
+            pathsContainer.innerHTML = '';
+            data.paths.forEach((path, i) => {
+                const card = document.createElement('div');
+                card.className = `bg-stone-50 border border-stone-200 rounded-xl p-4 hover:shadow-md transition-shadow duration-300 fade-in`;
+                card.style.animationDelay = `${i * 0.1}s`;
+                
+                card.innerHTML = `
+                    <div class="flex items-center mb-2">
+                        <div class="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-xs font-bold mr-3 shadow-sm">${i+1}</div>
+                        <h4 class="text-base font-bold text-stone-800">${path.name}</h4>
+                    </div>
+                    <div class="pl-9 space-y-2 text-sm">
+                        <p><span class="text-stone-400 font-bold mr-1">➤ 核心：</span><span class="text-stone-700">${path.core}</span></p>
+                        <p><span class="text-stone-400 font-bold mr-1">➤ 资源：</span><span class="text-stone-700 italic">${path.resource}</span></p>
+                        <div class="bg-white p-3 rounded mt-2 border border-stone-100 shadow-sm">
+                            <span class="text-amber-600 font-bold mr-1 block mb-1 text-xs uppercase tracking-wide">实战项目挑战</span>
+                            <span class="text-stone-800 font-medium">${path.project}</span>
+                        </div>
+                    </div>
+                `;
+                pathsContainer.appendChild(card);
+            });
+
+            if (radarChartInstance) {
+                radarChartInstance.data.datasets[0].data = data.radarData;
+                radarChartInstance.update();
+            }
+        }
+    </script>
+</body>
+</html>
